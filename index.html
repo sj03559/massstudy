@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MassStudy</title>
+<meta name="description" content="대지 도면을 올리면 블루폼 매스 대안을 형태별로 만들어 주는 건축 매스 스터디 툴. 3D로 고치고, 골라서 일러스트·라이노 파일로 내보내요.">
+<meta property="og:title" content="MassStudy">
+<meta property="og:description" content="대지를 올리면, 블루폼 대안이 쌓입니다. 건축 매스 스터디 툴.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="index.html">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15l7-3.5 11 4-7 4z" fill="#3E6E8E"/><path d="M3 15V9l7-3.5v6z" fill="#6FA9CF"/><path d="M10 11.5v-6l11 4v6z" fill="#8EC3E3"/></svg>
+      MassStudy
+    </a>
+    <nav>
+      <a href="#how">사용법</a>
+      <a href="#forms">형태</a>
+      <a href="#files">파일</a>
+      <a href="#faq">자주 묻는 것</a>
+      <a class="cta" href="app.html">작업실 열기</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">건축 매스 스터디 · 블루폼</p>
+      <h1>대지를 올리면,<br><em>블루폼 대안</em>이 쌓여요.</h1>
+      <p class="lead">DXF나 3DM 대지 위에 박공부터 마당형까지 수십 개의 매스 대안을 만들고, 3D로 고치고, 고른 안만 일러스트·라이노 파일로 내보내세요. 면적, 높이, 진입 마당은 알아서 체크해요.</p>
+      <div class="ctas">
+        <a class="btn main" href="app.html?start=new">내 대지로 시작하기</a>
+        <a class="btn line" href="app.html?start=sample">예시 대지로 둘러보기</a>
+      </div>
+    </div>
+    <div class="stagebox">
+      <canvas id="heroCanvas" aria-label="예시 대지 위에서 바뀌는 블루폼 매스 대안" role="img"></canvas>
+      <div class="stagecap"><span id="heroCode"><b>G01</b> 한 줄 박공</span><span>성성동 44-9 · 1,157㎡</span></div>
+    </div>
+  </div>
+  <div class="ruler" aria-hidden="true"></div>
+</section>
+
+<main>
+  <section class="band" id="how">
+    <div class="wrap">
+      <div class="sechead">
+        <div><p class="label">사용법</p><h2>크리틱 전날 밤에도 네 단계면 돼요</h2></div>
+        <p>설치 없이 브라우저에서 돌아가요. 도면은 내 컴퓨터 밖으로 나가지 않고, 로그인하면 프로젝트만 계정에 저장돼요.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><span class="n">01</span><h3>대지</h3><p>DXF·3DM을 올리고 대지 경계를 한 번 클릭해요. 차가 들어오는 변을 찍으면 진입 마당이 잡혀요.</p></div>
+        <div class="step"><span class="n">02</span><h3>대안</h3><p>형태별 개수를 정하고 만들기를 누르면 조건을 통과한 안만 나와요. 마음에 드는 건 ★.</p></div>
+        <div class="step"><span class="n">03</span><h3>편집</h3><p>3D에서 덩어리를 끌어 옮기고, 높이·회전·지붕을 바꾸고, 비슷한 변형을 더 뽑아요.</p></div>
+        <div class="step"><span class="n">04</span><h3>정리</h3><p>고른 안이 형태별로 모이고 번호가 다시 붙어요. A1 시트와 OBJ로 내보내요.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="forms">
+    <div class="wrap">
+      <div class="sechead">
+        <div><p class="label">다섯 가지 형태</p><h2>스터디 모형 책상 위의 그 형태들</h2></div>
+        <p>블루폼 스터디에서 자주 나오는 조작을 다섯 갈래로 묶었어요. 갈래마다 배치 방식이 여러 개라 같은 형태 안에서도 결과가 달라요.</p>
+      </div>
+      <div class="forms" id="formsGrid"></div>
+      <p class="formsnote">아래 그림은 예시 대지(천안 성성동 44-9, Storage 72 · Work 132 · Rest 39㎡)에서 지금 이 페이지가 직접 만든 안이에요.</p>
+    </div>
+  </section>
+
+  <section class="band" id="files">
+    <div class="wrap">
+      <div class="sechead">
+        <div><p class="label">파일</p><h2>라이노에서 받아서, 일러스트로 넘겨요</h2></div>
+        <p>시트에는 블루폼과 분류·번호만 들어가요. 글자는 Noto Sans KR 텍스트라 일러스트에서 그대로 고칠 수 있어요.</p>
+      </div>
+      <div class="files">
+        <div class="fcol">
+          <h3>넣는 파일</h3>
+          <table class="ftable"><tbody>
+            <tr><td>.3dm</td><td>라이노 파일 그대로. 선·폴리라인·곡선을 읽어요.</td></tr>
+            <tr><td>.dxf</td><td>캐드·라이노에서 내보낸 평면. mm·cm·m 자동 판단.</td></tr>
+            <tr><td>.json</td><td>MassStudy 프로젝트 파일.</td></tr>
+          </tbody></table>
+        </div>
+        <div class="fcol">
+          <h3>나오는 파일</h3>
+          <table class="ftable"><tbody>
+            <tr><td>.ai</td><td>A1 가로 시트. 블루폼 면과 분류·번호 텍스트, 클리핑 마스크 없음.</td></tr>
+            <tr><td>.svg</td><td>같은 시트를 SVG로. 피그마·인디자인에도 바로.</td></tr>
+            <tr><td>.png</td><td>A1 시트 이미지(약 150dpi). 카톡·노션 공유용.</td></tr>
+            <tr><td>.obj</td><td>도면 원래 좌표·단위 그대로. 라이노에서 Import 하면 대지 위에 올라가요.</td></tr>
+            <tr><td>.json</td><td>프로젝트 전체. 다른 컴퓨터에서 이어서 작업할 때.</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="checks">
+    <div class="wrap">
+      <div class="sechead">
+        <div><p class="label">자동 체크</p><h2>예쁜데 안 되는 안은 미리 걸러요</h2></div>
+        <p>대안을 만들 때와 3D에서 고칠 때 모두 같은 기준으로 체크하고, 걸리는 덩어리는 빨간 선으로 보여요.</p>
+      </div>
+      <div class="checks">
+        <div class="chk"><span class="v">±5%</span><h3>프로그램 면적</h3><p>Storage · Work · Rest 각각의 바닥 면적.</p></div>
+        <div class="chk"><span class="v">12 m</span><h3>최고 높이</h3><p>지붕 꼭대기까지. 기준은 직접 바꿔요.</p></div>
+        <div class="chk"><span class="v">1 m</span><h3>대지 경계 이격</h3><p>모든 모서리가 경계에서 떨어져 있는지.</p></div>
+        <div class="chk"><span class="v">0</span><h3>덩어리 겹침</h3><p>같은 높이에서 겹치는 덩어리가 없는지.</p></div>
+        <div class="chk"><span class="v">16 × 12 m</span><h3>진입 마당</h3><p>차가 들어오는 변 앞, 4.5m 아래는 비워 둬요.</p></div>
+        <div class="chk"><span class="v">3 m</span><h3>창고와 마당</h3><p>반입이 쉽도록 Storage가 마당 가까이에.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="faq">
+    <div class="wrap">
+      <div class="sechead">
+        <div><p class="label">자주 묻는 것</p><h2>써 보기 전에</h2></div>
+        <p></p>
+      </div>
+      <div class="faq">
+        <details><summary>무료예요?</summary><p>네. 회원가입 없이 바로 쓸 수 있어요. 로그인은 여러 컴퓨터에서 이어서 작업하고 싶을 때만 필요해요.</p></details>
+        <details><summary>작업은 어디에 저장돼요?</summary><p>기본은 지금 쓰는 브라우저예요. 로그인하면 계정에도 자동 저장되고, 프로젝트 파일(.json)로 받아 둘 수도 있어요.</p></details>
+        <details><summary>3DM이 안 열려요.</summary><p>대지 주변만 골라 새 파일로 저장하면 가볍고 빨라요. 그래도 안 되면 라이노에서 Export Selected → DXF로 올려 주세요.</p></details>
+        <details><summary>일러스트에서 글자가 이상해요.</summary><p>Noto Sans KR을 설치하면 그대로 보이고 고칠 수 있어요. 없으면 일러스트가 비슷한 글꼴로 바꿔 보여 줘요.</p></details>
+        <details><summary>프로그램 면적을 바꿀 수 있어요?</summary><p>네. 대지 탭에서 Storage · Work · Rest 면적과 최고 높이, 이격, 진입 마당 크기를 바꾸고 대안을 다시 만들면 돼요.</p></details>
+        <details><summary>친구한테 보여 주고 싶어요.</summary><p>로그인한 상태에서 프로젝트 목록의 공유 링크를 누르면 링크가 복사돼요. 받은 사람은 사본으로 열어서 원본은 안전해요.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <div><h2>오늘 밤 스터디, 여기서 시작해요</h2><p>예시 대지가 열려 있어서 바로 눌러 볼 수 있어요.</p></div>
+      <div class="ctas"><a class="btn main" href="app.html?start=new">내 대지로 시작하기</a><a class="btn line" href="app.html?start=sample">예시로 둘러보기</a></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MassStudy · 건축 매스 스터디 툴</span>
+    <span>글꼴 Noto Sans KR · IBM Plex (SIL OFL)</span>
+  </div>
+</footer>
+
+<script src="js/core.js"></script>
+<script src="js/axon.js"></script>
+<script src="js/landing.js"></script>
+</body>
+</html>

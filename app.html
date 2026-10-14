@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MassStudy 작업실</title>
+<meta name="description" content="대지를 올리고 블루폼 매스 대안을 만들어 고르고 내보내는 작업 화면">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="logo" href="index.html" aria-label="MassStudy 첫 화면">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15l7-3.5 11 4-7 4z" fill="#3E6E8E"/><path d="M3 15V9l7-3.5v6z" fill="#6FA9CF"/><path d="M10 11.5v-6l11 4v6z" fill="#8EC3E3"/></svg>
+      MassStudy
+    </a>
+    <div class="proj">
+      <input id="projName" aria-label="프로젝트 이름" maxlength="60">
+      <span class="saved" id="savedState"></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="site" id="tab-site"><i>1</i>대지</button>
+      <button class="tab" role="tab" data-tab="gen" id="tab-gen"><i>2</i>대안</button>
+      <button class="tab" role="tab" data-tab="edit" id="tab-edit"><i>3</i>편집</button>
+      <button class="tab" role="tab" data-tab="sheet" id="tab-sheet"><i>4</i>정리</button>
+    </nav>
+    <div class="right">
+      <button class="btn sm" id="openProjects">프로젝트</button>
+      <button class="btn sm" id="account" hidden>로그인</button>
+    </div>
+  </header>
+
+  <!-- 1 site -->
+  <section class="view" data-view="site">
+    <aside class="side">
+      <div class="block">
+        <h3>도면</h3>
+        <label class="drop" id="drop" for="planFile"><b>DXF · 3DM 파일 선택</b><br>또는 여기로 끌어다 놓기</label>
+        <input type="file" id="planFile" accept=".dxf,.3dm" hidden>
+        <div class="field"><label for="units">도면 단위</label>
+          <select id="units"><option value="auto">자동</option><option value="1000">mm</option><option value="100">cm</option><option value="1">m</option></select></div>
+        <p class="hint">대지 주변만 골라 내보내면 빨라요. 라이노는 .3dm 그대로, 캐드는 DXF로.</p>
+        <button class="btn sm" id="loadSample">예시 대지 불러오기</button>
+      </div>
+      <div class="block">
+        <h3>대지 지정</h3>
+        <div class="row">
+          <button class="btn" data-mode="pick" id="m-pick">경계선 클릭</button>
+          <button class="btn" data-mode="draw" id="m-draw">꼭짓점 찍기</button>
+          <button class="btn" data-mode="entry" id="m-entry">진입 변 클릭</button>
+        </div>
+        <div class="row" id="drawRow" hidden>
+          <button class="btn sm primary" id="drawDone">닫기</button>
+          <button class="btn sm" id="drawUndo">한 점 취소</button>
+        </div>
+        <p class="hint" id="modeHint"></p>
+        <dl class="kv" id="siteInfo"></dl>
+      </div>
+      <div class="block">
+        <h3>조건</h3>
+        <div class="field"><label for="p-maxH">최고 높이 (m)</label><input id="p-maxH" type="number" step="0.5" min="3"></div>
+        <div class="field"><label for="p-setback">경계 이격 (m)</label><input id="p-setback" type="number" step="0.5" min="0"></div>
+        <div class="field"><label for="p-yardD">진입 마당 깊이 (m)</label><input id="p-yardD" type="number" step="1" min="0"></div>
+        <div class="field"><label for="p-yardW">진입 마당 폭 (m)</label><input id="p-yardW" type="number" step="1" min="0"></div>
+      </div>
+      <div class="block">
+        <h3>프로그램 (㎡)</h3>
+        <div class="field"><label for="p-S">Storage</label><input id="p-S" type="number" step="1" min="5"></div>
+        <div class="field"><label for="p-W">Work</label><input id="p-W" type="number" step="1" min="5"></div>
+        <div class="field"><label for="p-R">Rest</label><input id="p-R" type="number" step="1" min="5"></div>
+        <p class="hint" id="progSum"></p>
+      </div>
+    </aside>
+    <div class="stage">
+      <canvas class="plan" id="plan"></canvas>
+      <div class="overlay" id="planPills"></div>
+    </div>
+  </section>
+
+  <!-- 2 generate -->
+  <section class="view" data-view="gen" hidden>
+    <aside class="side">
+      <div class="block">
+        <h3>형태별 개수</h3>
+        <div id="famCounts" class="block"></div>
+        <button class="btn primary" id="genBtn">대안 만들기</button>
+        <p class="hint">★로 고른 안은 남기고 나머지만 새로 만들어요.</p>
+        <p class="msg" id="genMsg" hidden></p>
+      </div>
+      <div class="block">
+        <h3>보기</h3>
+        <div class="row"><button class="btn sm" id="onlyPicked" aria-pressed="false">고른 안만</button><button class="btn sm" id="colorMode2" aria-pressed="false">프로그램 색</button></div>
+        <dl class="kv" id="genInfo"></dl>
+      </div>
+    </aside>
+    <div class="stage scroll">
+      <div class="gridwrap">
+        <div class="filters" id="famFilter"></div>
+        <div class="cards" id="cards"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 edit -->
+  <section class="view" data-view="edit" hidden>
+    <aside class="side">
+      <div class="block">
+        <div class="altnav">
+          <button class="btn sm" id="prevAlt" aria-label="이전 대안">◀</button>
+          <span class="code" id="eCode"></span><span class="nm" id="eName"></span>
+          <button class="btn sm" id="nextAlt" aria-label="다음 대안">▶</button>
+        </div>
+        <div class="row">
+          <button class="btn sm" id="ePick" aria-pressed="false">☆ 고르기</button>
+          <select id="eFam" class="btn sm" aria-label="분류"></select>
+        </div>
+        <div class="row">
+          <button class="btn sm" id="varyBtn">비슷한 안 5개</button>
+          <button class="btn sm" id="dupAlt">이 안 복제</button>
+          <button class="btn sm danger" id="delAlt">안 삭제</button>
+        </div>
+        <p class="msg" id="editMsg" hidden></p>
+      </div>
+      <div class="block">
+        <h3>체크</h3>
+        <div class="checks" id="checks"></div>
+      </div>
+      <div class="block">
+        <h3>덩어리</h3>
+        <div class="pieces" id="pieces"></div>
+        <p class="hint">3D에서 덩어리를 눌러 고르고 끌어서 옮겨요. 방향키 0.5m, Shift+방향키 회전.</p>
+      </div>
+      <div class="block" id="pieceTools">
+        <h3>고른 덩어리</h3>
+        <div class="insp" id="insp">
+          <label>X<input class="inp" data-k="x" type="number" step="0.25"></label>
+          <label>Y<input class="inp" data-k="y" type="number" step="0.25"></label>
+          <label>길이<input class="inp" data-k="l" type="number" step="0.25" min="1"></label>
+          <label>폭<input class="inp" data-k="d" type="number" step="0.25" min="1"></label>
+          <label>높이<input class="inp" data-k="h" type="number" step="0.25" min="0.2"></label>
+          <label>띄움<input class="inp" data-k="z" type="number" step="0.25" min="0"></label>
+          <label>회전<input class="inp" data-k="a" type="number" step="5"></label>
+          <label>면적<input class="inp" id="iArea" type="number" step="1" min="1"></label>
+        </div>
+        <label class="check"><input type="checkbox" id="lockArea" checked> 길이·폭 바꿀 때 면적 고정</label>
+        <div class="tools">
+          <button class="btn sm" data-act="rot-">↺ 15°</button><button class="btn sm" data-act="rot+">↻ 15°</button>
+          <button class="btn sm" data-act="dup">복제</button><button class="btn sm danger" data-act="del">삭제</button>
+        </div>
+        <div class="field"><label for="eRoof">지붕</label><select id="eRoof"></select></div>
+        <div class="field"><label for="eGroup">프로그램</label><select id="eGroup"></select></div>
+      </div>
+      <div class="block">
+        <h3>보기</h3>
+        <div class="row">
+          <button class="btn sm" id="undo">되돌리기</button>
+          <button class="btn sm" id="redo">다시하기</button>
+          <button class="btn sm" id="resetAlt">처음 상태로</button>
+        </div>
+        <div class="row">
+          <button class="btn sm" id="viewAxo">축측</button>
+          <button class="btn sm" id="viewTop">평면</button>
+          <button class="btn sm" id="colorMode" aria-pressed="false">프로그램 색</button>
+        </div>
+      </div>
+    </aside>
+    <div class="stage"><div id="three"></div><div class="overlay" id="editPills"></div></div>
+  </section>
+
+  <!-- 4 sheet -->
+  <section class="view" data-view="sheet" hidden>
+    <aside class="side">
+      <div class="block">
+        <h3>정리</h3>
+        <p class="hint">고른 안이 형태별로 모이고 번호가 다시 붙어요. 분류는 각 안 아래에서 바꿔요.</p>
+        <dl class="kv" id="sheetInfo"></dl>
+      </div>
+      <div class="block">
+        <h3>시트 내보내기 · A1</h3>
+        <div class="exgrid">
+          <button class="btn primary" id="exAi">일러스트 .ai</button>
+          <button class="btn" id="exSvg">SVG</button>
+          <button class="btn" id="exPng">PNG 이미지</button>
+          <button class="btn" id="exObj">라이노 OBJ</button>
+        </div>
+        <p class="hint">시트에는 블루폼과 분류·번호만 들어가요. 글꼴은 Noto Sans KR이고 글자는 그대로 고칠 수 있어요. OBJ는 도면 원래 좌표로 들어가요.</p>
+      </div>
+      <div class="block">
+        <h3>프로젝트 파일</h3>
+        <div class="exgrid">
+          <button class="btn" id="exJson">저장 (.json)</button>
+          <label class="btn" for="imJson">불러오기</label>
+        </div>
+        <input type="file" id="imJson" accept=".json" hidden>
+        <p class="msg" id="exMsg" hidden></p>
+      </div>
+    </aside>
+    <div class="stage scroll"><div class="gridwrap" id="sheet"></div></div>
+  </section>
+</div>
+
+<!-- projects dialog -->
+<div class="dlg" id="dlgProjects" hidden role="dialog" aria-modal="true" aria-labelledby="dlgProjectsT">
+  <div class="box">
+    <header><h2 id="dlgProjectsT">프로젝트</h2><button class="btn sm primary" id="newProject">새 프로젝트</button><button class="btn sm ghost" data-close aria-label="닫기">✕</button></header>
+    <div class="body">
+      <p class="msg" id="cloudNote"></p>
+      <div class="plist" id="plist"></div>
+    </div>
+  </div>
+</div>
+
+<!-- login dialog -->
+<div class="dlg" id="dlgLogin" hidden role="dialog" aria-modal="true" aria-labelledby="dlgLoginT">
+  <div class="box">
+    <header><h2 id="dlgLoginT">로그인</h2><button class="btn sm ghost" data-close aria-label="닫기">✕</button></header>
+    <div class="body">
+      <div id="loginForm" class="block">
+        <p class="hint">이메일로 로그인 링크를 보내드려요. 로그인하면 프로젝트가 계정에 저장돼서 다른 컴퓨터에서도 이어서 작업할 수 있어요.</p>
+        <form id="loginF" class="row">
+          <input class="inp" id="email" type="email" required placeholder="you@school.ac.kr" style="flex:1;text-align:left;font-family:var(--f-body)">
+          <button class="btn primary" type="submit" id="sendLink">링크 보내기</button>
+        </form>
+        <p class="msg" id="loginMsg" hidden></p>
+      </div>
+      <div id="loggedIn" class="block" hidden>
+        <p id="who"></p>
+        <div class="row"><button class="btn" id="logout">로그아웃</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- confirm dialog -->
+<div class="dlg" id="dlgConfirm" hidden role="dialog" aria-modal="true" aria-labelledby="dlgConfirmT">
+  <div class="box" style="width:min(400px,100%)">
+    <header><h2 id="dlgConfirmT">확인</h2></header>
+    <div class="body">
+      <p id="confirmText" style="margin:0"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" id="confirmNo">취소</button><button class="btn primary" id="confirmYes">확인</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/core.js"></script>
+<script src="js/axon.js"></script>
+<script src="js/font-kr.js"></script>
+<script src="js/export.js"></script>
+<script src="js/import3dm.js"></script>
+<script src="js/cloud.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
