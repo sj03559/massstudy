@@ -25,7 +25,7 @@ function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 function localAll() { return lsGet(LKEY) || {}; }
 function freshData(withSample) {
-  return { site: withSample ? sampleSite() : null, prog: Object.assign({}, DEFAULT_PROG), alts: [], picks: [], cur: null, counts: { G: 8, R: 8, S: 8, C: 8, B: 8 }, filter: 'all', onlyPicked: false, colorMode: false, tab: withSample ? 'gen' : 'site' };
+  return { site: withSample ? sampleSite() : null, prog: Object.assign({}, DEFAULT_PROG), alts: [], picks: [], cur: null, counts: { G: 8, R: 8, S: 8, C: 8, B: 8 }, filter: 'all', onlyPicked: false, colorMode: false, mode: 'one', tab: withSample ? 'gen' : 'site' };
 }
 function summaryOf(d) { return { site: d.site ? d.site.name : '', area: d.site ? Math.round(Math.abs(Core.area(d.site.poly))) : 0, alts: d.alts.length, picks: d.picks.length }; }
 
@@ -58,10 +58,11 @@ function cloudSave() {
 function openProject(p) {
   S = Object.assign(freshData(false), p.data);
   if (!S.prog) S.prog = Object.assign({}, DEFAULT_PROG);
+  if (!S.mode) S.mode = S.alts.length && !S.alts.some(function (x) { return Core.isOne(x.pieces); }) ? 'three' : 'one';
   META = { id: p.id, name: p.name || '이름 없는 프로젝트', updated: p.updated || Date.now(), cloud: !!p.cloud };
   dxf = null; undoStack = {}; redoStack = {}; selPiece = -1; threeSiteDirty = true; view.fitted = false;
   $('#projName').value = META.name;
-  fillProg(); renderFamCounts(); renderSiteInfo(); renderMeta();
+  fillProg(); renderFamCounts(); renderSiteInfo(); renderMeta(); renderMode();
   setTab(S.tab || 'gen');
   setMode(S.site && S.site.entry == null ? 'entry' : (S.site ? 'pick' : 'pick'));
   lsSet(CKEY, META.id);
@@ -301,11 +302,22 @@ $('#loadSample').addEventListener('click', function () { dxf = null; S.site = sa
   });
 });
 function fillProg() { ['maxH', 'setback', 'yardD', 'yardW', 'S', 'W', 'R'].forEach(function (k) { $('#p-' + k).value = S.prog[k]; }); progSum(); }
-function progSum() { $('#progSum').textContent = '합계 ' + fmt(S.prog.S + S.prog.W + S.prog.R) + '㎡. 숫자를 바꾼 뒤엔 대안을 새로 만들어 주세요.'; }
+function progSum() { $('#progSum').textContent = '합계 ' + fmt(S.prog.S + S.prog.W + S.prog.R) + '㎡. 숫자를 바꾼 뒤엔 대안을 새로 만들어 주세요.'; if (S && $('#moveAllRow')) renderMode(); }
 
 /* =====================================================================
    2. GENERATE
    ===================================================================== */
+function renderMode() {
+  $$('[data-setmode]').forEach(function (b) { var on = b.dataset.setmode === S.mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  var t = S.prog.S + S.prog.W + S.prog.R;
+  $$('.modeNote').forEach(function (e) { e.textContent = S.mode === 'one' ? '합계 ' + fmt(t) + '㎡을 하나로 이어진 매스로 만들어요. 형태만 바꿔 가며 스터디해요.' : 'Storage · Work · Rest를 각각 따로 된 덩어리로 배치해요.'; });
+  $('#moveAllRow').hidden = S.mode !== 'one';
+}
+$$('[data-setmode]').forEach(function (b) { b.addEventListener('click', function () {
+  if (S.mode === b.dataset.setmode) return;
+  S.mode = b.dataset.setmode; renderMode(); save();
+  var gm = $('#genMsg'); gm.hidden = false; gm.className = 'msg'; gm.textContent = (S.mode === 'one' ? '한 덩어리' : '세 덩어리') + ' 모드로 바꿨어요. 대안 만들기를 누르면 이 방식으로 새로 만들어요.';
+}); });
 function renderFamCounts() {
   var box = $('#famCounts'); box.innerHTML = '';
   FAMS.forEach(function (f) {
@@ -319,8 +331,9 @@ function generate(seed, quiet) {
   var gm = $('#genMsg');
   if (!S.site) { gm.hidden = false; gm.className = 'msg bad'; gm.textContent = '먼저 대지 탭에서 대지를 정해 주세요.'; return; }
   var keep = S.alts.filter(isPicked), start = {};
+  S.alts.forEach(function (a) { start[a.fam] = Math.max(start[a.fam] || 0, a.num); });
   keep.forEach(function (a) { start[a.fam] = Math.max(start[a.fam] || 0, a.num); });
-  var r = Core.generate(S.site, S.prog, FAMS.map(function (f) { return { k: f.k, n: S.counts[f.k] }; }), seed || (Date.now() % 1e9), start);
+  var r = Core.generate(S.site, S.prog, FAMS.map(function (f) { return { k: f.k, n: S.counts[f.k] }; }), seed || (Date.now() % 1e9), start, S.mode);
   r.alts.forEach(function (a) { a.id = uid(); });
   S.alts = keep.concat(r.alts);
   if (!altById(S.cur)) S.cur = S.alts.length ? sortedAlts()[0].id : null;
@@ -462,7 +475,8 @@ function bindDrag() {
     plane.set(new THREE.Vector3(0, 1, 0), -p.z);
     if (!ray.ray.intersectPlane(plane, hit)) return;
     pushUndo(a);
-    st = { i: i, sx: hit.x, sz: hit.z, px: p.x, py: p.y, moved: false };
+    var all = S.mode === 'one' && $('#moveAll').checked;
+    st = { i: i, sx: hit.x, sz: hit.z, px: p.x, py: p.y, moved: false, all: all, start: a.pieces.map(function (q) { return [q.x, q.y]; }) };
     three.controls.enabled = false; dom.setPointerCapture(e.pointerId);
     e.stopImmediatePropagation(); e.preventDefault();
     refreshEdit();
@@ -471,9 +485,12 @@ function bindDrag() {
     if (!st || st.empty) return;
     setNdc(e);
     if (!ray.ray.intersectPlane(plane, hit)) return;
-    var p = curAlt().pieces[st.i];
-    var nx = Math.round((st.px + (hit.x - st.sx)) * 4) / 4, ny = Math.round((st.py - (hit.z - st.sz)) * 4) / 4;
-    if (nx !== p.x || ny !== p.y) { p.x = nx; p.y = ny; st.moved = true; schedule(); }
+    var ps = curAlt().pieces, p = ps[st.i];
+    var dx = Math.round((hit.x - st.sx) * 4) / 4, dy = Math.round(-(hit.z - st.sz) * 4) / 4;
+    if (st.px + dx === p.x && st.py + dy === p.y) return;
+    if (st.all) ps.forEach(function (q, k) { if (st.start[k]) { q.x = st.start[k][0] + dx; q.y = st.start[k][1] + dy; } });
+    else { p.x = st.px + dx; p.y = st.py + dy; }
+    st.moved = true; schedule();
   });
   function up(e) {
     if (!st) return;
@@ -504,11 +521,14 @@ function refreshEdit() {
   $('#colorMode').classList.toggle('on', S.colorMode); $('#colorMode').setAttribute('aria-pressed', S.colorMode ? 'true' : 'false');
   var ck = check(a), box = $('#checks'); box.innerHTML = '';
   function row(k, v, ok) { box.appendChild(el('span', null, k)); box.appendChild(el('span', 'v', v)); box.appendChild(el('span', ok == null ? '' : ok ? 'ok' : 'no', ok == null ? '' : ok ? '✓' : '✕')); }
-  ['S', 'W', 'R'].forEach(function (g) { row(GROUPS[g].ko, fmt(ck.areas[g], 1) + ' / ' + fmt(S.prog[g]) + '㎡', Math.abs(ck.areas[g] - S.prog[g]) <= S.prog[g] * 0.05); });
+  if (ck.one) {
+    row('연면적 합계', fmt(ck.areas.M, 1) + ' / ' + fmt(ck.total) + '㎡', Math.abs(ck.areas.M - ck.total) <= ck.total * 0.05);
+    row('한 덩어리', ck.connected ? '이어짐' : '떨어진 덩어리 있음', ck.connected);
+  } else ['S', 'W', 'R'].forEach(function (g) { row(GROUPS[g].ko, fmt(ck.areas[g], 1) + ' / ' + fmt(S.prog[g]) + '㎡', Math.abs(ck.areas[g] - S.prog[g]) <= S.prog[g] * 0.05); });
   row('최고 높이', fmt(ck.hmax, 1) + ' / ' + fmt(S.prog.maxH, 1) + 'm', ck.height);
   row('대지 안 · 이격', ck.inside ? '들어감' : '벗어남', ck.inside);
   row('겹침', ck.overlap ? '있음' : '없음', !ck.overlap);
-  if (S.site.entry != null) { row('진입 마당', ck.yard ? '비어 있음' : '막힘', ck.yard); row('창고까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', ck.near == null ? null : ck.near <= 3); }
+  if (S.site.entry != null) { row('진입 마당', ck.yard ? '비어 있음' : '막힘', ck.yard); if (ck.one) row('마당까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', null); else row('창고까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', ck.near == null ? null : ck.near <= 3); }
   var pl = $('#pieces'); pl.innerHTML = '';
   a.pieces.forEach(function (p, i) {
     var it = el('button', 'pc' + (i === selPiece ? ' sel' : ''));
@@ -534,7 +554,7 @@ function refreshEdit() {
 function fillSelects() {
   var f = $('#eFam'); FAMS.forEach(function (x) { var o = el('option', null, x.k + ' ' + x.ko); o.value = x.k; f.appendChild(o); });
   var r = $('#eRoof'); ROOFS.forEach(function (x) { var o = el('option', null, x.ko); o.value = x.k; r.appendChild(o); });
-  var g = $('#eGroup'); ['S', 'W', 'R', 'roof'].forEach(function (k) { var o = el('option', null, GROUPS[k].ko); o.value = k; g.appendChild(o); });
+  var g = $('#eGroup'); ['M', 'S', 'W', 'R', 'roof'].forEach(function (k) { var o = el('option', null, GROUPS[k].ko); o.value = k; g.appendChild(o); });
 }
 function setFam(a, fam) { if (a.fam === fam) return; a.num = nextNum(fam); a.fam = fam; save(); }
 $('#eFam').addEventListener('change', function () { var a = curAlt(); if (a) { setFam(a, $('#eFam').value); refreshEdit(); } });
@@ -569,6 +589,16 @@ $('#delAlt').addEventListener('click', function () {
     var nx = L[i + 1] || L[i - 1]; S.cur = nx && nx.id !== a.id ? nx.id : null; selPiece = -1; save(); openEdit();
   });
 });
+function rotAll(deg) {
+  var a = curAlt(); if (!a) return;
+  pushUndo(a);
+  var c = [0, 0]; a.pieces.forEach(function (p) { c[0] += p.x / a.pieces.length; c[1] += p.y / a.pieces.length; });
+  var cr = Math.cos(deg * Math.PI / 180), sr = Math.sin(deg * Math.PI / 180);
+  a.pieces.forEach(function (p) { var dx = p.x - c[0], dy = p.y - c[1]; p.x = Math.round((c[0] + cr * dx - sr * dy) * 1000) / 1000; p.y = Math.round((c[1] + sr * dx + cr * dy) * 1000) / 1000; p.a = ((p.a + deg) % 360 + 360) % 360; });
+  refreshEdit(); save();
+}
+$('#rotAllL').addEventListener('click', function () { rotAll(15); });
+$('#rotAllR').addEventListener('click', function () { rotAll(-15); });
 function act(kind) {
   var a = curAlt(); if (!a || selPiece < 0) return;
   var p = a.pieces[selPiece];
@@ -580,7 +610,10 @@ function act(kind) {
     case 'rot5+': p.a = (p.a + 5) % 360; break;
     case 'dup': a.pieces.push(Object.assign({}, p, { x: p.x + 2, y: p.y - 2 })); selPiece = a.pieces.length - 1; break;
     case 'del': a.pieces.splice(selPiece, 1); selPiece = -1; break;
-    case 'left': p.x -= 0.5; break; case 'right': p.x += 0.5; break; case 'up': p.y += 0.5; break; case 'down': p.y -= 0.5; break;
+    case 'left': case 'right': case 'up': case 'down':
+      var mv = { left: [-0.5, 0], right: [0.5, 0], up: [0, 0.5], down: [0, -0.5] }[kind];
+      (S.mode === 'one' && $('#moveAll').checked ? a.pieces : [p]).forEach(function (q) { q.x += mv[0]; q.y += mv[1]; });
+      break;
   }
   refreshEdit(); save();
 }
@@ -619,7 +652,8 @@ $('#resetAlt').addEventListener('click', function () { var a = curAlt(); if (!a 
 document.addEventListener('keydown', function (e) {
   if (!S || S.tab !== 'edit' || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dlgConfirm').hidden) return;
   var k = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
-  if (k && selPiece >= 0) { e.preventDefault(); if (e.shiftKey) act(k === 'left' || k === 'down' ? 'rot5-' : 'rot5+'); else act(k); }
+  if (k && selPiece < 0 && S.mode === 'one' && $('#moveAll').checked && !e.shiftKey) { e.preventDefault(); selPiece = 0; act(k); selPiece = -1; refreshEdit(); }
+  else if (k && selPiece >= 0) { e.preventDefault(); if (e.shiftKey) act(k === 'left' || k === 'down' ? 'rot5-' : 'rot5+'); else act(k); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && selPiece >= 0) { e.preventDefault(); act('del'); }
   else if (e.key === 'Escape') { selPiece = -1; refreshEdit(); }

@@ -11,6 +11,7 @@ var Core = (function () {
     S: { ko: 'Storage', en: 'Storage', color: '#E0A215' },
     W: { ko: 'Work', en: 'Work', color: '#2C5C8F' },
     R: { ko: 'Rest', en: 'Rest', color: '#C0596E' },
+    M: { ko: '매스', en: 'Mass', color: '#8EC3E3' },
     roof: { ko: '지붕판', en: 'Roof', color: '#B9C2C7' }
   };
   var ROOFS = [
@@ -18,6 +19,8 @@ var Core = (function () {
     { k: 'butterfly', ko: '나비' }, { k: 'aframe', ko: 'A형' }, { k: 'vault', ko: '볼트' }
   ];
   var SUBS = { G: [1, 2, 3, 4, 6], R: [1, 2, 3, 4, 5, 6], S: [1, 2, 3, 4, 6], C: [1, 2, 3], B: [1, 2, 3, 4, 6] };
+  var SUBS1 = { G: [1, 2, 3, 4, 5], R: [1, 2, 3, 4, 5, 6], S: [1, 2, 3, 4, 5], C: [1, 2, 3, 4], B: [1, 2, 3, 4] };
+  function isOne(ps) { for (var i = 0; i < ps.length; i++) if (ps[i].g === 'M') return true; return false; }
 
   function mulberry(seed) {
     var a = seed >>> 0;
@@ -144,7 +147,7 @@ var Core = (function () {
   /* ---- checks ---- */
   var TOL = 0.05;
   function check(alt, site, prog) {
-    var ps = alt.pieces, areas = { S: 0, W: 0, R: 0 }, hmax = 0, i, j;
+    var ps = alt.pieces, areas = { S: 0, W: 0, R: 0, M: 0 }, hmax = 0, i, j, one = isOne(ps);
     var res = { inside: true, overlap: false, yard: true, height: true, areaOk: true, near: null, bad: {} };
     var feet = ps.map(foot), Y = yardPoly(site, prog);
     for (i = 0; i < ps.length; i++) {
@@ -163,14 +166,136 @@ var Core = (function () {
       }
     }
     res.areas = areas; res.hmax = hmax;
-    ['S', 'W', 'R'].forEach(function (g) { if (Math.abs(areas[g] - prog[g]) > prog[g] * 0.05) res.areaOk = false; });
+    res.total = prog.S + prog.W + prog.R;
+    if (one) { if (Math.abs(areas.M - res.total) > res.total * 0.05) res.areaOk = false; }
+    else ['S', 'W', 'R'].forEach(function (g) { if (Math.abs(areas[g] - prog[g]) > prog[g] * 0.05) res.areaOk = false; });
+    res.one = one;
+    res.connected = one ? connected(ps, feet) : true;
     if (Y) {
       var d = Infinity;
-      for (i = 0; i < ps.length; i++) if (ps[i].g === 'S') d = Math.min(d, polyDist(feet[i], Y));
+      for (i = 0; i < ps.length; i++) if (one ? ps[i].g !== 'roof' : ps[i].g === 'S') d = Math.min(d, polyDist(feet[i], Y));
       res.near = d === Infinity ? null : d;
     }
-    res.ok = res.inside && !res.overlap && res.yard && res.height;
+    res.ok = res.inside && !res.overlap && res.yard && res.height && res.connected;
     return res;
+  }
+
+  /* pieces (roof plates aside) form one body: each touches another, side by side or stacked */
+  function connected(ps, feet) {
+    var idx = []; ps.forEach(function (p, i) { if (p.g !== 'roof') idx.push(i); });
+    if (idx.length < 2) return true;
+    var seen = {}, stack = [idx[0]]; seen[idx[0]] = 1; var n = 1;
+    while (stack.length) {
+      var i = stack.pop(), p = ps[i];
+      idx.forEach(function (j) {
+        if (seen[j]) return;
+        var q = ps[j];
+        if (p.z > top(q) + 0.06 || q.z > top(p) + 0.06) return;
+        if (polyDist(feet[i], feet[j]) > 0.06) return;
+        if (p.z >= top(q) - 0.06 || q.z >= top(p) - 0.06) { if (penetration(feet[i], feet[j]) < 0.5) return; }
+        seen[j] = 1; n++; stack.push(j);
+      });
+    }
+    return n === idx.length;
+  }
+
+  /* ---- one-body templates: total floor area in a single connected mass ---- */
+  function makeOne(fam, prog, rnd, sub) {
+    var u = T(rnd), r = u.r, pick = u.pick, TA = prog.S + prog.W + prog.R;
+    function M(l, d, roof, h, x, y, a, z) { return bar('M', x || 0, y || 0, l, d, a || 0, z || 0, h, roof); }
+    function H(roof) { return roof === 'gable' ? r(6.2, 8.5) : roof === 'aframe' ? r(8, 10.5) : roof === 'shed' ? r(5.2, 7) : roof === 'butterfly' ? r(5.5, 7) : roof === 'vault' ? r(5.8, 7.5) : r(4, 5.4); }
+    function mix() { return pick(['flat', 'flat', 'gable', 'shed']); }
+    var ps, name, d, d1, d2, a1, a2, l1, l2, b1, b2, b3, i, n, c, rf, k;
+    switch (fam + (sub || pick(SUBS1[fam]))) {
+      case 'G1': name = '긴 박공'; d = r(7.5, 10); ps = [M(TA / d, d, 'gable', H('gable'))]; break;
+      case 'G2':
+        name = '꺾인 박공'; a1 = TA * r(0.5, 0.62); d1 = r(7, 9); d2 = r(6.5, 8.5); l1 = a1 / d1; l2 = (TA - a1) / d2;
+        b1 = M(l1, d1, 'gable', H('gable')); b2 = M(l2, d2, 'gable', b1.h * r(0.85, 1.05), l1 / 2 - d2 / 2, d1 / 2 + l2 / 2, 90);
+        ps = [b1, b2]; break;
+      case 'G3':
+        name = '높낮이 박공'; d = r(7, 9); a1 = TA * r(0.45, 0.6); l1 = a1 / d; l2 = (TA - a1) / d;
+        ps = [M(l1, d, 'gable', r(8, 10)), M(l2, d * r(0.8, 1), 'gable', r(5, 6.3), l1 / 2 + l2 / 2, 0)];
+        ps[1].l = (TA - a1) / ps[1].d; ps[1].x = l1 / 2 + ps[1].l / 2; break;
+      case 'G4':
+        name = '겹 박공'; d1 = r(6, 8); d2 = r(6, 8); a1 = TA * r(0.45, 0.55); l1 = a1 / d1; l2 = (TA - a1) / d2;
+        k = Math.max(0, Math.min(l1, l2) / 2 - 2.5);
+        ps = [M(l1, d1, 'gable', H('gable')), M(l2, d2, 'gable', H('gable'), r(-k, k), (d1 + d2) / 2)]; break;
+      case 'G5':
+        name = '세 겹 박공'; ps = []; var xx = 0, st = r(0.5, 2.5);
+        for (i = 0; i < 3; i++) { d = r(6, 7.5); var li = TA / 3 / d; ps.push(M(li, d, 'gable', r(6, 8.5), xx + d / 2, (i % 2 ? 1 : -1) * st, 90)); xx += d; }
+        break;
+      case 'R1':
+        if (rnd() < 0.5) { name = '외쪽 지붕'; d = r(8, 10); ps = [M(TA / d, d, 'shed', r(6, 8))]; }
+        else { name = '마주 보는 외쪽'; d = r(7, 9); l1 = TA / 2 / d; ps = [M(l1, d, 'shed', r(6, 7.5), 0, 0, 90), M(l1, d, 'shed', r(6, 7.5), d, 0, 270)]; }
+        break;
+      case 'R2': name = '나비 지붕'; d = r(8, 11); ps = [M(TA / d, d, 'butterfly', H('butterfly'))]; break;
+      case 'R3':
+        if (rnd() < 0.5) { name = '볼트 지붕'; d = r(9, 11); ps = [M(TA / d, d, 'vault', H('vault'))]; }
+        else { name = '쌍 볼트'; d = r(7, 8.5); l1 = TA / 2 / d; ps = [M(l1, d, 'vault', H('vault')), M(l1, d, 'vault', H('vault'), r(-2, 2), d)]; }
+        break;
+      case 'R4':
+        name = '톱날 지붕'; n = pick([4, 5]); c = r(4, 5); l1 = TA / (n * c); var hs = r(5.5, 7); ps = [];
+        for (i = 0; i < n; i++) ps.push(M(l1, c, 'shed', hs, 0, i * c));
+        break;
+      case 'R5': name = 'A형 지붕'; d = r(9, 11.5); ps = [M(TA / d, d, 'aframe', H('aframe'))]; break;
+      case 'R6':
+        name = '큰 지붕 아래'; d = r(8, 10); l1 = TA / d; b1 = M(l1, d, 'flat', r(3.8, 4.5));
+        ps = [b1, bar('roof', 0, 0, l1 + r(2, 4), d + r(2, 3.5), 0, b1.h + r(1, 2), 0.35, 'flat')]; break;
+      case 'S1':
+        name = '2층 얹기'; a1 = TA * r(0.55, 0.65); d1 = r(8, 10); l1 = a1 / d1; b1 = M(l1, d1, 'flat', r(3.6, 4.2));
+        d2 = r(6, 8); l2 = (TA - a1) / d2; b2 = M(l2, d2, pick(['flat', 'gable', 'shed']), 0, r(-l1 / 4, l1 / 4), r(-1, 1), pick([0, 0, 90]), b1.h);
+        b2.h = b2.r === 'gable' ? r(4.2, 5.5) : r(3.2, 4.2); ps = [b1, b2]; break;
+      case 'S2':
+        name = '필로티'; c = r(4, 5.5); var zr = r(3.4, 4.2); d = r(8, 10); l1 = (TA - c * c) / d;
+        b2 = M(l1, d, pick(['flat', 'shed', 'gable']), 0, 0, 0, 0, zr); b2.h = b2.r === 'gable' ? r(4.5, 6) : r(3.6, 4.5);
+        b1 = M(c, c, 'flat', zr, r(-1, 1) * (l1 / 2 - c / 2) * 0.6, r(-1, 1) * (d / 2 - c / 2) * 0.5);
+        ps = [b1, b2]; break;
+      case 'S3':
+        name = '계단식 쌓기'; d = r(8, 10); var fr = [0.45, 0.33, 0.22], z = 0, hl = r(3.4, 3.8); ps = [];
+        l1 = TA * fr[0] / d;
+        fr.forEach(function (f) { var li = TA * f / d; ps.push(M(li, d, 'flat', hl, l1 / 2 - li / 2, 0, 0, z)); z += hl; });
+        break;
+      case 'S4':
+        name = '비틀어 쌓기'; a1 = TA * r(0.55, 0.65); d1 = r(8, 10); l1 = a1 / d1; b1 = M(l1, d1, 'flat', r(3.8, 4.4));
+        d2 = r(6, 7.5); l2 = (TA - a1) / d2; b2 = M(l2, d2, pick(['flat', 'shed']), r(3.2, 4.2), r(-1.5, 1.5), r(-1, 1), pick([1, -1]) * r(20, 45), b1.h);
+        ps = [b1, b2]; break;
+      case 'S5':
+        name = '캔틸레버'; a1 = TA * r(0.55, 0.65); d1 = r(7, 9); l1 = a1 / d1; b1 = M(l1, d1, 'flat', r(3.8, 4.4));
+        d2 = d1 * r(0.75, 1); l2 = (TA - a1) / d2; var ov = r(2.5, 5);
+        if (l2 - ov < 3) return null;
+        b2 = M(l2, d2, pick(['flat', 'shed', 'gable']), 0, l1 / 2 + ov - l2 / 2, (d1 - d2) / 2 * pick([-1, 1]), 0, b1.h);
+        b2.h = b2.r === 'gable' ? r(4.2, 5.5) : r(3.2, 4.2); ps = [b1, b2]; break;
+      case 'C1':
+        name = 'ㄱ자'; a1 = TA * r(0.5, 0.6); d1 = r(6, 7.5); d2 = r(6, 7.5); l1 = a1 / d1; l2 = (TA - a1) / d2; rf = mix();
+        ps = [M(l1, d1, rf, H(rf)), M(l2, d2, rf, H(rf), l1 / 2 - d2 / 2, d1 / 2 + l2 / 2, 90)]; break;
+      case 'C2': case 'C4':
+        name = sub === 4 ? '비대칭 ㄷ자' : 'ㄷ자'; var a0 = TA * r(0.36, 0.46), d0 = r(6, 7.5), l0 = a0 / d0, dw = r(5.5, 6.5), rest = TA - a0;
+        var s1 = sub === 4 ? r(0.3, 0.4) : 0.5, lw1 = rest * s1 / dw, lw2 = rest * (1 - s1) / dw; rf = mix();
+        if (l0 - 2 * dw < 5) return null;
+        ps = [M(l0, d0, rf, H(rf)), M(lw1, dw, rf, H(rf), -l0 / 2 + dw / 2, d0 / 2 + lw1 / 2, 90), M(lw2, dw, rf, H(rf), l0 / 2 - dw / 2, d0 / 2 + lw2 / 2, 90)];
+        break;
+      case 'C3':
+        name = 'ㅁ자 중정'; d = r(4.5, 5.5); k = r(0.7, 1); var Lx = (TA / (2 * d) + 2 * d) / (1 + k), Ly = Lx * k;
+        if (Lx - 2 * d < 4 || Ly - 2 * d < 4) return null;
+        rf = pick(['flat', 'flat', 'shed']); var hc = H(rf);
+        ps = [M(Lx, d, rf, hc, 0, -(Ly / 2 - d / 2)), M(Lx, d, rf, hc * r(0.9, 1.25), 0, Ly / 2 - d / 2), M(Ly - 2 * d, d, rf, hc, -(Lx / 2 - d / 2), 0, 90), M(Ly - 2 * d, d, rf, hc, Lx / 2 - d / 2, 0, 90)];
+        break;
+      case 'B1': name = '긴 바'; d = r(5.5, 7); rf = mix(); ps = [M(TA / d, d, rf, H(rf))]; break;
+      case 'B2':
+        name = 'Z자 바'; d = r(5.5, 7); rf = mix(); var hz = H(rf); l1 = TA * 0.34 / d; l2 = TA * 0.32 / d; var l3 = TA * 0.34 / d;
+        ps = [M(l1, d, rf, hz), M(l2, d, rf, hz, l1 / 2 - d / 2, d / 2 + l2 / 2, 90), M(l3, d, rf, hz, l1 / 2 - d + l3 / 2, d + l2)];
+        break;
+      case 'B3':
+        name = 'T자 바'; d1 = r(6, 7.5); a1 = TA * r(0.6, 0.7); l1 = a1 / d1; d2 = r(5.5, 7); l2 = (TA - a1) / d2; rf = mix();
+        ps = [M(l1, d1, rf, H(rf)), M(l2, d2, rf, H(rf), r(-l1 / 4, l1 / 4), d1 / 2 + l2 / 2, 90)]; break;
+      case 'B4':
+        name = '엇갈린 바'; d1 = r(5.5, 7); d2 = r(5.5, 7); a1 = TA * r(0.45, 0.55); l1 = a1 / d1; l2 = (TA - a1) / d2; rf = mix();
+        var sh = Math.min(l1, l2) * r(0.35, 0.6);
+        if (Math.min(l1, l2) - sh < 3) return null;
+        ps = [M(l1, d1, rf, H(rf)), M(l2, d2, rf, H(rf), sh * pick([1, -1]) + (l2 - l1) / 2 * 0, (d1 + d2) / 2)]; break;
+    }
+    if (!ps) return null;
+    return { name: name, pieces: ps };
   }
 
   /* ---- templates ---- */
@@ -184,7 +309,8 @@ var Core = (function () {
   }
   function bar(g, x, y, l, d, a, z, h, r) { return { g: g, x: x, y: y, l: l, d: d, a: a || 0, z: z || 0, h: h, r: r || 'flat' }; }
 
-  function makeTemplate(fam, prog, rnd, sub) {
+  function makeTemplate(fam, prog, rnd, sub, mode) {
+    if (mode === 'one') return finish(makeOne(fam, prog, rnd, sub), prog);
     var u = T(rnd), r = u.r, pick = u.pick;
     var A = { S: prog.S, W: prog.W, R: prog.R };
     var dep = { S: function () { return r(6, 8.5); }, W: function () { return r(7, 10); }, R: function () { return r(4.5, 6.5); } };
@@ -409,13 +535,17 @@ var Core = (function () {
         ps.forEach(function (p) { p.y = y + p.d / 2; y += p.d + r(0, 2); p.x = x; x += st; });
         break;
     }
-    if (!ps) return null;
-    for (i = 0; i < ps.length; i++) for (var k = 0; k < i; k++) {
+    return finish(ps ? { name: name, pieces: ps } : null, prog);
+  }
+  function finish(t, prog) {
+    if (!t) return null;
+    var ps = t.pieces;
+    for (var i = 0; i < ps.length; i++) for (var k = 0; k < i; k++) {
       var p1 = ps[i], p2 = ps[k];
       if (p1.z < top(p2) - TOL && p2.z < top(p1) - TOL && penetration(foot(p1), foot(p2)) > TOL) return null;
     }
     ps.forEach(function (p) { if (top(p) > prog.maxH) p.h = Math.max(2.5, prog.maxH - p.z - 0.1); });
-    return { name: name, pieces: ps };
+    return t;
   }
 
   function transform(ps, ang, tx, ty, mirror) {
@@ -436,10 +566,10 @@ var Core = (function () {
     return b;
   }
 
-  function placeOne(fam, site, prog, rnd, sub) {
+  function placeOne(fam, site, prog, rnd, sub, mode) {
     var bb = bbox(site.poly), base = longestEdgeAngle(site.poly), Y = yardPoly(site, prog);
     for (var t = 0; t < 40; t++) {
-      var tpl = makeTemplate(fam, prog, rnd, t < 24 ? sub : 0);
+      var tpl = makeTemplate(fam, prog, rnd, t < 24 ? sub : 0, mode);
       if (!tpl) continue;
       var c = centerOf(tpl.pieces);
       var local = tpl.pieces.map(function (p) { return Object.assign({}, p, { x: p.x - c[0], y: p.y - c[1] }); });
@@ -465,11 +595,12 @@ var Core = (function () {
     return q;
   }
 
-  function generate(site, prog, plan, seed, startIdx) {
+  function generate(site, prog, plan, seed, startIdx, mode) {
+    var subs = mode === 'one' ? SUBS1 : SUBS;
     var rnd = mulberry(seed), out = [], fails = 0;
     plan.forEach(function (f) {
       for (var i = 0; i < f.n; i++) {
-        var r = placeOne(f.k, site, prog, rnd, SUBS[f.k][i % SUBS[f.k].length]);
+        var r = placeOne(f.k, site, prog, rnd, subs[f.k][i % subs[f.k].length], mode);
         if (!r) { fails++; continue; }
         var idx = (startIdx[f.k] || 0) + 1; startIdx[f.k] = idx;
         out.push({ id: f.k + '-' + seed.toString(36) + '-' + i, fam: f.k, num: idx, name: r.name, pieces: r.pieces, orig: JSON.stringify(r.pieces) });
@@ -485,8 +616,18 @@ var Core = (function () {
       var k = 0.5 + tries / 200;
       var c = [0, 0]; alt.pieces.forEach(function (p) { c[0] += p.x / alt.pieces.length; c[1] += p.y / alt.pieces.length; });
       var rot = (rnd() - 0.5) * 16 * k, cr = Math.cos(rot * Math.PI / 180), sr = Math.sin(rot * Math.PI / 180);
+      var one = isOne(alt.pieces), sc = 1, dh = (rnd() - 0.5) * 1.6 * k;
+      var shx = (rnd() - 0.5) * 4 * k, shy = (rnd() - 0.5) * 4 * k;
       var ps = alt.pieces.map(function (p) {
         var dx = p.x - c[0], dy = p.y - c[1];
+        if (one) {
+          var q1 = Object.assign({}, p, {
+            x: c[0] + (cr * dx - sr * dy) * sc + shx, y: c[1] + (sr * dx + cr * dy) / sc + shy,
+            a: ((p.a + rot) % 360 + 360) % 360
+          });
+          if (p.g !== 'roof') q1.h = Math.max(2.5, Math.min(prog.maxH - q1.z, p.h + dh));
+          return round(q1);
+        }
         var q = Object.assign({}, p, {
           x: c[0] + cr * dx - sr * dy + (rnd() - 0.5) * 3 * k,
           y: c[1] + sr * dx + cr * dy + (rnd() - 0.5) * 3 * k,
@@ -575,7 +716,7 @@ var Core = (function () {
 
   return {
     FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top,
-    yardPoly: yardPoly, check: check, generate: generate, vary: vary, SUBS: SUBS, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
+    yardPoly: yardPoly, check: check, generate: generate, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();
 if (typeof module !== 'undefined') module.exports = Core;

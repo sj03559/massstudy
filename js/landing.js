@@ -9,8 +9,8 @@
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // one alternative per arrangement type, plus a few extra per family for the gallery
-  var plan = Core.FAMS.map(function (f) { return { k: f.k, n: Core.SUBS[f.k].length }; });
-  var gen = Core.generate(site, prog, plan, 4407, {}).alts;
+  var plan = Core.FAMS.map(function (f) { return { k: f.k, n: Core.SUBS1[f.k].length + 1 }; });
+  var gen = Core.generate(site, prog, plan, 4407, {}, 'one').alts;
   var heroList = [], byFam = {};
   gen.forEach(function (a) { (byFam[a.fam] = byFam[a.fam] || []).push(a); });
   // interleave families for the hero
@@ -53,11 +53,11 @@
 
   /* ---------- forms gallery ---------- */
   var TXT = {
-    G: '한 줄 · 나란한 · ㄱ자 · 쪼갠 · 엇갈린 박공',
-    R: '외쪽 · 나비 · A형 · 큰 지붕 · 톱날 · 볼트',
-    S: '얹기 · 띄우기 · 계단식 · 비틀기 · 캔틸레버',
-    C: 'ㄷ자 · ㄱ자 · 바람개비 · 띄워 감싼 마당',
-    B: '평행 · 흩어진 · 긴 바 · 엇갈린 · 작은 동'
+    G: '긴 · 꺾인 · 높낮이 · 겹 · 세 겹 박공',
+    R: '외쪽 · 나비 · 볼트 · 톱날 · A형 · 큰 지붕',
+    S: '2층 얹기 · 필로티 · 계단식 · 비틀기 · 캔틸레버',
+    C: 'ㄱ자 · ㄷ자 · 비대칭 ㄷ자 · ㅁ자 중정',
+    B: '긴 바 · Z자 · T자 · 엇갈린 바'
   };
   var grid = document.getElementById('formsGrid'), cards = [];
   Core.FAMS.forEach(function (f) {
@@ -65,7 +65,7 @@
     var card = document.createElement('article'); card.className = 'form';
     var c = document.createElement('canvas'); c.setAttribute('role', 'img'); c.setAttribute('aria-label', f.ko + ' 예시 매스');
     var meta = document.createElement('div'); meta.className = 'meta';
-    var k = document.createElement('span'); k.className = 'k'; k.textContent = f.k + ' · ' + list.length + '가지 배치';
+    var k = document.createElement('span'); k.className = 'k'; k.textContent = f.k + ' · ' + Core.SUBS1[f.k].length + '가지 배치';
     var h = document.createElement('h3'); h.textContent = f.ko;
     var p = document.createElement('p'); p.textContent = TXT[f.k];
     meta.appendChild(k); meta.appendChild(h); meta.appendChild(p);

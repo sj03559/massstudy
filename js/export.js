@@ -146,7 +146,7 @@ var Export = (function () {
     if (idx.length === 3) out.push([f[idx[0]], f[idx[1]], f[idx[2]]]);
     return out;
   }
-  var GN = { S: 'Storage', W: 'Work', R: 'Rest', roof: 'Roof' };
+  var GN = { S: 'Storage', W: 'Work', R: 'Rest', M: 'Mass', roof: 'Roof' };
   function obj(list, site) {
     var b = Core.bbox(site.poly), sx = (b[2] - b[0]) + 15, sy = (b[3] - b[1]) + 15, o = site.origin || [0, 0], u = site.upm || 1000;
     var L = ['# MassStudy · ' + (site.name || ''), '# units: drawing units (1 m = ' + u + ')', ''], vi = 0;

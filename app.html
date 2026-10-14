@@ -69,6 +69,8 @@
       </div>
       <div class="block">
         <h3>프로그램 (㎡)</h3>
+        <div class="row"><button class="btn sm" data-setmode="one">한 덩어리</button><button class="btn sm" data-setmode="three">세 덩어리 (S·W·R)</button></div>
+        <p class="hint modeNote"></p>
         <div class="field"><label for="p-S">Storage</label><input id="p-S" type="number" step="1" min="5"></div>
         <div class="field"><label for="p-W">Work</label><input id="p-W" type="number" step="1" min="5"></div>
         <div class="field"><label for="p-R">Rest</label><input id="p-R" type="number" step="1" min="5"></div>
@@ -84,6 +86,11 @@
   <!-- 2 generate -->
   <section class="view" data-view="gen" hidden>
     <aside class="side">
+      <div class="block">
+        <h3>매스 구성</h3>
+        <div class="row"><button class="btn sm" data-setmode="one">한 덩어리</button><button class="btn sm" data-setmode="three">세 덩어리 (S·W·R)</button></div>
+        <p class="hint modeNote"></p>
+      </div>
       <div class="block">
         <h3>형태별 개수</h3>
         <div id="famCounts" class="block"></div>
@@ -133,6 +140,10 @@
         <h3>덩어리</h3>
         <div class="pieces" id="pieces"></div>
         <p class="hint">3D에서 덩어리를 눌러 고르고 끌어서 옮겨요. 방향키 0.5m, Shift+방향키 회전.</p>
+        <div id="moveAllRow" class="block">
+          <label class="check"><input type="checkbox" id="moveAll" checked> 끌 때 매스 전체 같이 움직이기</label>
+          <div class="row"><button class="btn sm" id="rotAllL">전체 ↺ 15°</button><button class="btn sm" id="rotAllR">전체 ↻ 15°</button></div>
+        </div>
       </div>
       <div class="block" id="pieceTools">
         <h3>고른 덩어리</h3>
