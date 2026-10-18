@@ -228,15 +228,30 @@
 <!-- login dialog -->
 <div class="dlg" id="dlgLogin" hidden role="dialog" aria-modal="true" aria-labelledby="dlgLoginT">
   <div class="box">
-    <header><h2 id="dlgLoginT">로그인</h2><button class="btn sm ghost" data-close aria-label="닫기">✕</button></header>
+    <header><h2 id="dlgLoginT">계정</h2><button class="btn sm ghost" data-close aria-label="닫기">✕</button></header>
     <div class="body">
       <div id="loginForm" class="block">
-        <p class="hint">이메일로 로그인 링크를 보내드려요. 로그인하면 프로젝트가 계정에 저장돼서 다른 컴퓨터에서도 이어서 작업할 수 있어요.</p>
-        <form id="loginF" class="row">
-          <input class="inp" id="email" type="email" required placeholder="you@school.ac.kr" style="flex:1;text-align:left;font-family:var(--f-body)">
-          <button class="btn primary" type="submit" id="sendLink">링크 보내기</button>
+        <div class="tabs" role="tablist" style="align-self:flex-start">
+          <button class="tab" role="tab" data-auth="in" aria-selected="true">로그인</button>
+          <button class="tab" role="tab" data-auth="up" aria-selected="false">회원가입</button>
+        </div>
+        <p class="hint" id="authHint">로그인하면 프로젝트가 계정에 저장돼서 다른 컴퓨터에서도 이어서 작업할 수 있어요.</p>
+        <form id="loginF" class="block">
+          <label class="field" style="grid-template-columns:5em 1fr"><span>이메일</span><input class="inp" id="email" type="email" required autocomplete="email" placeholder="you@school.ac.kr" style="text-align:left;font-family:var(--f-body)"></label>
+          <label class="field" style="grid-template-columns:5em 1fr"><span>비밀번호</span><input class="inp" id="pw" type="password" required minlength="6" autocomplete="current-password" placeholder="6자 이상" style="text-align:left;font-family:var(--f-body)"></label>
+          <label class="field" id="pw2Row" hidden style="grid-template-columns:5em 1fr"><span>한 번 더</span><input class="inp" id="pw2" type="password" minlength="6" autocomplete="new-password" style="text-align:left;font-family:var(--f-body)"></label>
+          <button class="btn primary" type="submit" id="authSubmit">로그인</button>
         </form>
+        <div class="row">
+          <button class="btn sm ghost" id="magicLink" type="button">비밀번호 없이 이메일 링크로 로그인</button>
+          <button class="btn sm ghost" id="forgotPw" type="button">비밀번호 찾기</button>
+        </div>
         <p class="msg" id="loginMsg" hidden></p>
+      </div>
+      <div id="resetForm" class="block" hidden>
+        <p class="hint">새 비밀번호를 정해 주세요.</p>
+        <form id="resetF" class="row"><input class="inp" id="newPw" type="password" required minlength="6" autocomplete="new-password" placeholder="새 비밀번호 6자 이상" style="flex:1;text-align:left;font-family:var(--f-body)"><button class="btn primary" type="submit">바꾸기</button></form>
+        <p class="msg" id="resetMsg" hidden></p>
       </div>
       <div id="loggedIn" class="block" hidden>
         <p id="who"></p>

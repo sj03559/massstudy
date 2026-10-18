@@ -80,14 +80,14 @@ $('#projName').addEventListener('change', function () { var v = $('#projName').v
 /* ---------- tabs ---------- */
 function setTab(t) {
   S.tab = t;
-  $$('.tab').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'); });
+  $$('[data-tab]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false'); });
   $$('.view').forEach(function (v) { v.hidden = v.dataset.view !== t; });
   if (t === 'site') { if (!view.fitted) fitPlan(); drawPlan(); }
   if (t === 'gen') renderCards();
   if (t === 'edit') { initThree(); openEdit(); }
   if (t === 'sheet') renderSheet();
 }
-$$('.tab').forEach(function (b) { b.addEventListener('click', function () { setTab(b.dataset.tab); save(); }); });
+$$('[data-tab]').forEach(function (b) { b.addEventListener('click', function () { setTab(b.dataset.tab); save(); }); });
 function renderMeta() { document.title = META.name + ' · MassStudy'; }
 function altById(id) { for (var i = 0; i < S.alts.length; i++) if (S.alts[i].id === id) return S.alts[i]; return null; }
 function code(a) { return a.fam + pad(a.num); }
@@ -858,19 +858,57 @@ function renderAccount() {
   var b = $('#account');
   b.hidden = !Cloud.enabled;
   if (!Cloud.enabled) return;
-  b.textContent = Cloud.user ? Cloud.user.email.split('@')[0] : '로그인';
+  b.textContent = Cloud.user ? Cloud.user.email.split('@')[0] : '로그인 · 회원가입';
   b.classList.toggle('primary', !Cloud.user);
-  $('#loginForm').hidden = !!Cloud.user; $('#loggedIn').hidden = !Cloud.user;
+  $('#loginForm').hidden = !!Cloud.user; $('#loggedIn').hidden = !Cloud.user; $('#resetForm').hidden = true;
   if (Cloud.user) $('#who').textContent = Cloud.user.email + '로 로그인했어요. 프로젝트가 자동으로 계정에 저장돼요.';
 }
 $('#account').addEventListener('click', function () { renderAccount(); openDlg('#dlgLogin'); });
+var authMode = 'in';
+function setAuth(m) {
+  authMode = m;
+  $$('[data-auth]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.auth === m ? 'true' : 'false'); });
+  $('#pw2Row').hidden = m !== 'up'; $('#pw2').required = m === 'up';
+  $('#pw').autocomplete = m === 'up' ? 'new-password' : 'current-password';
+  $('#authSubmit').textContent = m === 'up' ? '회원가입' : '로그인';
+  $('#authHint').textContent = m === 'up' ? '이메일과 비밀번호로 가입해요. 가입 확인 메일의 링크를 누르면 바로 쓸 수 있어요.' : '로그인하면 프로젝트가 계정에 저장돼서 다른 컴퓨터에서도 이어서 작업할 수 있어요.';
+  $('#loginMsg').hidden = true;
+}
+$$('[data-auth]').forEach(function (b) { b.addEventListener('click', function () { setAuth(b.dataset.auth); }); });
+function loginMsg(t, bad) { var m = $('#loginMsg'); m.hidden = false; m.className = 'msg' + (bad ? ' bad' : ''); m.textContent = t; }
+var AUTH_ERR = {
+  'Invalid login credentials': '이메일이나 비밀번호가 맞지 않아요.',
+  'Email not confirmed': '가입 확인 메일의 링크를 먼저 눌러 주세요.',
+  'User already registered': '이미 가입한 이메일이에요. 로그인 탭에서 들어와 주세요.'
+};
+function authErr(err) { var m = err && err.message || ''; return AUTH_ERR[m] || ('잠시 뒤 다시 해 주세요.' + (m ? ' (' + m + ')' : '')); }
 $('#loginF').addEventListener('submit', function (e) {
   e.preventDefault();
-  var em = $('#email').value.trim(), m = $('#loginMsg'), b = $('#sendLink');
+  var em = $('#email').value.trim(), pw = $('#pw').value, b = $('#authSubmit');
+  if (authMode === 'up' && pw !== $('#pw2').value) { loginMsg('비밀번호 두 칸이 서로 달라요.', true); return; }
   b.disabled = true;
-  Cloud.signIn(em).then(function () { m.hidden = false; m.className = 'msg'; m.textContent = em + '로 로그인 링크를 보냈어요. 메일의 링크를 누르면 이 화면으로 돌아와요.'; },
-    function (err) { m.hidden = false; m.className = 'msg bad'; m.textContent = '링크를 보내지 못했어요. 주소를 확인하고 잠시 뒤 다시 해 보세요.' + (err && err.message ? ' (' + err.message + ')' : ''); })
-    .then(function () { b.disabled = false; });
+  var p = authMode === 'up' ? Cloud.signUp(em, pw).then(function (d) {
+    if (d && d.session) loginMsg('가입했어요! 바로 로그인됐어요.');
+    else loginMsg(em + '로 가입 확인 메일을 보냈어요. 메일의 링크를 누르면 가입이 끝나요.');
+  }) : Cloud.signInPw(em, pw).then(function () { closeDlg('#dlgLogin'); });
+  p.catch(function (err) { loginMsg(authErr(err), true); }).then(function () { b.disabled = false; });
+});
+$('#magicLink').addEventListener('click', function () {
+  var em = $('#email').value.trim();
+  if (!em) { loginMsg('이메일을 먼저 적어 주세요.', true); $('#email').focus(); return; }
+  Cloud.signIn(em).then(function () { loginMsg(em + '로 로그인 링크를 보냈어요. 메일의 링크를 누르면 이 화면으로 돌아와요.'); }, function (err) { loginMsg(authErr(err), true); });
+});
+$('#forgotPw').addEventListener('click', function () {
+  var em = $('#email').value.trim();
+  if (!em) { loginMsg('가입한 이메일을 먼저 적어 주세요.', true); $('#email').focus(); return; }
+  Cloud.resetPw(em).then(function () { loginMsg(em + '로 비밀번호 재설정 메일을 보냈어요.'); }, function (err) { loginMsg(authErr(err), true); });
+});
+Cloud.onRecovery(function () { renderAccount(); $('#loginForm').hidden = true; $('#loggedIn').hidden = true; $('#resetForm').hidden = false; openDlg('#dlgLogin'); });
+$('#resetF').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var m = $('#resetMsg');
+  Cloud.updatePw($('#newPw').value).then(function () { m.hidden = false; m.className = 'msg'; m.textContent = '비밀번호를 바꿨어요.'; setTimeout(function () { $('#resetForm').hidden = true; renderAccount(); }, 1200); },
+    function (err) { m.hidden = false; m.className = 'msg bad'; m.textContent = authErr(err); });
 });
 $('#logout').addEventListener('click', function () { Cloud.signOut().then(function () { closeDlg('#dlgLogin'); toast('로그아웃했어요. 이 브라우저의 프로젝트는 그대로 있어요.'); }); });
 Cloud.onUser(function (u) { renderAccount(); if (u && META) { cloudSave(); toast(u.email + '로 로그인했어요.'); } });

@@ -2,7 +2,7 @@
 var Cloud = (function () {
   var cfg = window.MASSSTUDY_CONFIG || {};
   var SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
-  var client = null, user = null, listeners = [], readyP = null;
+  var client = null, user = null, listeners = [], recoveryListeners = [], readyP = null;
   var configured = !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
 
   function loadLib() {
@@ -18,7 +18,7 @@ var Cloud = (function () {
     if (readyP) return readyP;
     readyP = loadLib().then(function () {
       client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, detectSessionInUrl: true } });
-      client.auth.onAuthStateChange(function (_e, session) { setUser(session ? session.user : null); });
+      client.auth.onAuthStateChange(function (ev, session) { setUser(session ? session.user : null); if (ev === 'PASSWORD_RECOVERY') recoveryListeners.forEach(function (f) { f(); }); });
       return client.auth.getSession().then(function (r) { setUser(r.data.session ? r.data.session.user : null); return true; });
     }).catch(function () { configured = false; return false; });
     return readyP;
@@ -41,6 +41,13 @@ var Cloud = (function () {
         return client.auth.signInWithOtp({ email: email, options: { emailRedirectTo: location.origin + location.pathname } }).then(unwrap);
       });
     },
+    signInPw: function (email, pw) { return init().then(function () { return client.auth.signInWithPassword({ email: email, password: pw }).then(unwrap); }); },
+    signUp: function (email, pw) {
+      return init().then(function () { return client.auth.signUp({ email: email, password: pw, options: { emailRedirectTo: location.origin + location.pathname } }).then(unwrap); });
+    },
+    resetPw: function (email) { return init().then(function () { return client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }).then(unwrap); }); },
+    updatePw: function (pw) { return init().then(function () { return client.auth.updateUser({ password: pw }).then(unwrap); }); },
+    onRecovery: function (f) { recoveryListeners.push(f); },
     signOut: function () { return client ? client.auth.signOut() : Promise.resolve(); },
     list: function () {
       need();

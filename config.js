@@ -1,7 +1,6 @@
-/* MassStudy 설정
-   클라우드 저장·로그인을 켜려면 Supabase 프로젝트의 URL과 anon key를 넣으세요. (README.md 참고)
-   비워 두면 로그인 없이 브라우저 저장만 써요. */
+/* MassStudy 설정 — 회원가입·클라우드 저장 (Supabase)
+   anon key는 공개용 키라 사이트에 들어가도 괜찮아요. 데이터는 테이블 보안 규칙(RLS)으로 본인 것만 읽고 쓸 수 있어요. */
 window.MASSSTUDY_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://qramckplvsieaccyrrcz.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyYW1ja3BsdnNpZWFjY3lycmN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMzE1NjUsImV4cCI6MjEwNzkwNzU2NX0.4yu-44c2lfFfy3ndhuJhuKMhZpFzIZSPoD4_3aY8rnQ'
 };
