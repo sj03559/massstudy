@@ -573,12 +573,12 @@ function refreshEdit() {
     var sw = el('span', 'sw'); sw.style.background = GROUPS[p.g].color; it.appendChild(sw);
     var rk = ROOFS.filter(function (r) { return r.k === p.r; })[0];
     if (grouped) {
-      var gA = 0, gH = 0; members.forEach(function (k) { var q = a.pieces[k]; gA += q.l * q.d; gH = Math.max(gH, q.z + q.h); });
+      var gA = 0, gH = 0; members.forEach(function (k) { var q = a.pieces[k]; gA += Core.pieceArea(q); gH = Math.max(gH, q.z + q.h); });
       it.appendChild(el('span', null, GROUPS[p.g].ko + ' · 이어진 덩어리 (' + members.length + '개 합침)'));
       it.appendChild(el('span', 'v', fmt(gA, 1) + '㎡ · H' + fmt(gH, 1)));
     } else {
       it.appendChild(el('span', null, GROUPS[p.g].ko + (p.g === 'roof' ? '' : ' · ' + (rk ? rk.ko : ''))));
-      it.appendChild(el('span', 'v', p.g === 'roof' ? fmt(p.l, 1) + '×' + fmt(p.d, 1) : fmt(p.l * p.d, 1) + '㎡ · H' + fmt(p.z + p.h, 1)));
+      it.appendChild(el('span', 'v', p.g === 'roof' ? fmt(p.l, 1) + '×' + fmt(p.d, 1) : fmt(Core.pieceArea(p), 1) + '㎡ · H' + fmt(p.z + p.h, 1)));
     }
     it.addEventListener('click', function (ev) {
       if (ev.shiftKey || ev.ctrlKey || ev.metaKey) {
@@ -595,7 +595,7 @@ function refreshEdit() {
   var multi = selSet.length > 1;
   $('#multiTools').hidden = !multi;
   if (multi) {
-    var tA = 0; selSet.forEach(function (k) { var q = a.pieces[k]; if (q.g !== 'roof') tA += q.l * q.d; });
+    var tA = 0; selSet.forEach(function (k) { var q = a.pieces[k]; if (q.g !== 'roof') tA += Core.pieceArea(q); });
     var merged = selSet.every(function (k) { return a.pieces[k].u && a.pieces[k].u === a.pieces[selSet[0]].u; });
     $('#multiInfo').textContent = (merged ? '합친 덩어리 · ' : '') + selSet.length + '개 골랐어요 · 바닥면적 합계 ' + fmt(tA, 1) + '㎡';
     $('#unmergeSel').hidden = !selSet.some(function (k) { return a.pieces[k].u; });
@@ -605,8 +605,12 @@ function refreshEdit() {
   if (has) {
     var p = a.pieces[selPiece];
     $$('#insp input[data-k]').forEach(function (inp) { if (document.activeElement !== inp) inp.value = +(+p[inp.dataset.k]).toFixed(2); });
-    if (document.activeElement !== $('#iArea')) $('#iArea').value = +(p.l * p.d).toFixed(1);
+    if (document.activeElement !== $('#iArea')) $('#iArea').value = +Core.pieceArea(p).toFixed(1);
     $('#eRoof').value = p.r; $('#eGroup').value = p.g;
+    var rc = p.rc || [0, 0, 0, 0], ci = +$('#eCorner').value || 0, cr = rc[ci] || [0, 0];
+    if (document.activeElement !== $('#eRx')) $('#eRx').value = +(+cr[0]).toFixed(2);
+    if (document.activeElement !== $('#eRy')) $('#eRy').value = +(+cr[1]).toFixed(2);
+    $('#eRoof').disabled = Core.hasRound(p);
   }
   $('#undo').disabled = !(undoStack[a.id] && undoStack[a.id].length);
   $('#redo').disabled = !(redoStack[a.id] && redoStack[a.id].length);
@@ -736,10 +740,23 @@ $('#iArea').addEventListener('change', function () {
   var p = a.pieces[selPiece], v = parseFloat($('#iArea').value);
   if (!(v > 0)) { refreshEdit(); return; }
   pushUndo(a);
-  var k = Math.sqrt(v / (p.l * p.d)); p.l = Math.round(p.l * k * 1000) / 1000; p.d = Math.round(p.d * k * 1000) / 1000;
+  var k = Math.sqrt(v / Core.pieceArea(p)); p.l = Math.round(p.l * k * 1000) / 1000; p.d = Math.round(p.d * k * 1000) / 1000;
+  if (p.rc) p.rc = p.rc.map(function (r) { return r ? [Math.round(r[0] * k * 1000) / 1000, Math.round(r[1] * k * 1000) / 1000] : 0; });
   refreshEdit(); save();
 });
 $('#eRoof').addEventListener('change', function () { var a = curAlt(); if (!a || selPiece < 0) return; pushUndo(a); a.pieces[selPiece].r = $('#eRoof').value; refreshEdit(); save(); });
+function setCorner() {
+  var a = curAlt(); if (!a || selPiece < 0) return;
+  var p = a.pieces[selPiece], ci = +$('#eCorner').value, rx = Math.max(0, parseFloat($('#eRx').value) || 0), ry = Math.max(0, parseFloat($('#eRy').value) || 0);
+  pushUndo(a);
+  rx = Math.min(rx, p.l); ry = Math.min(ry, p.d);
+  var rc = (p.rc || [0, 0, 0, 0]).slice(); rc[ci] = rx > 0.05 && ry > 0.05 ? [Math.round(rx * 1000) / 1000, Math.round(ry * 1000) / 1000] : 0;
+  if (rc.some(Boolean)) { p.rc = rc; p.r = 'flat'; } else delete p.rc;
+  refreshEdit(); save();
+}
+$('#eCorner').addEventListener('change', function () { refreshEdit(); });
+$('#eRx').addEventListener('change', setCorner); $('#eRy').addEventListener('change', setCorner);
+$('#eRoundOff').addEventListener('click', function () { var a = curAlt(); if (!a || selPiece < 0 || !a.pieces[selPiece].rc) return; pushUndo(a); delete a.pieces[selPiece].rc; refreshEdit(); save(); });
 $('#eGroup').addEventListener('change', function () { var a = curAlt(); if (!a || selPiece < 0) return; pushUndo(a); a.pieces[selPiece].g = $('#eGroup').value; refreshEdit(); save(); });
 function undo() { var a = curAlt(), st = a && undoStack[a.id]; if (st && st.length) { (redoStack[a.id] = redoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; selSet = []; refreshEdit(); save(); } }
 function redo() { var a = curAlt(), st = a && redoStack[a.id]; if (st && st.length) { (undoStack[a.id] = undoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; selSet = []; refreshEdit(); save(); } }

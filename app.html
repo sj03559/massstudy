@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="css/app.css?v=20261019d">
+<link rel="stylesheet" href="css/app.css?v=20261019e">
 </head>
 <body>
 <div class="app">
@@ -175,6 +175,14 @@
         </div>
         <div class="field"><label for="eRoof">지붕</label><select id="eRoof"></select></div>
         <div class="field"><label for="eGroup">프로그램</label><select id="eGroup"></select></div>
+        <div class="field"><label for="eCorner">모서리 라운드</label>
+          <select id="eCorner"><option value="0">왼쪽 아래</option><option value="1">오른쪽 아래</option><option value="2">오른쪽 위</option><option value="3">왼쪽 위</option></select></div>
+        <div class="insp">
+          <label>가로 R<input class="inp" id="eRx" type="number" step="0.25" min="0"></label>
+          <label>세로 R<input class="inp" id="eRy" type="number" step="0.25" min="0"></label>
+        </div>
+        <div class="tools"><button class="btn sm" id="eRoundOff">라운드 없애기</button></div>
+        <p class="hint">덩어리를 회전하기 전 기준 방향이에요. 0이면 각진 모서리. 라운드가 있으면 평지붕만 돼요.</p>
       </div>
       <div class="block">
         <h3>보기</h3>
@@ -285,16 +293,16 @@
 
 <div class="toast" id="toast" hidden role="status"></div>
 
-<script src="config.js?v=20261019d"></script>
+<script src="config.js?v=20261019e"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="js/core.js?v=20261019d"></script>
-<script src="js/union.js?v=20261019d"></script>
-<script src="js/axon.js?v=20261019d"></script>
-<script src="js/font-kr.js?v=20261019d"></script>
-<script src="js/export.js?v=20261019d"></script>
-<script src="js/import3dm.js?v=20261019d"></script>
-<script src="js/cloud.js?v=20261019d"></script>
-<script src="js/app.js?v=20261019d"></script>
+<script src="js/core.js?v=20261019e"></script>
+<script src="js/union.js?v=20261019e"></script>
+<script src="js/axon.js?v=20261019e"></script>
+<script src="js/font-kr.js?v=20261019e"></script>
+<script src="js/export.js?v=20261019e"></script>
+<script src="js/import3dm.js?v=20261019e"></script>
+<script src="js/cloud.js?v=20261019e"></script>
+<script src="js/app.js?v=20261019e"></script>
 </body>
 </html>

@@ -103,7 +103,7 @@ var Union = (function () {
   var cache = new Map();
   /* pieces with the same p.u become one body. Returns [{v:[[x,y,z]..], n, edges:[bool], pi, smooth}] for every piece set. */
   function solids(pieces) {
-    var key = JSON.stringify(pieces.map(function (p) { return [p.u || '', p.x, p.y, p.l, p.d, p.a, p.z, p.h, p.r, p.g]; }));
+    var key = JSON.stringify(pieces.map(function (p) { return [p.u || '', p.x, p.y, p.l, p.d, p.a, p.z, p.h, p.r, p.g, p.rc || 0]; }));
     if (cache.has(key)) return cache.get(key);
     var out = [], groups = {};
     pieces.forEach(function (p, i) { if (p.u && p.g !== 'roof') (groups[p.u] = groups[p.u] || []).push(i); });

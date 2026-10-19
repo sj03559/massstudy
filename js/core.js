@@ -104,7 +104,40 @@ var Core = (function () {
       default: return [[-w, 0], [w, 0], [w, h], [-w, h]];
     }
   }
+  /* rounded corners: p.rc = [SW, SE, NE, NW], each 0 or [rx, ry] (local, before rotation) */
+  function hasRound(p) { return !!(p.rc && p.rc.some(function (r) { return r && (r[0] > 0.05 && r[1] > 0.05); })); }
+  function outline(p) {
+    var L = p.l / 2, D = p.d / 2, C = [[-L, -D], [L, -D], [L, D], [-L, D]];
+    if (!hasRound(p)) { var o = C.slice(); o.sm = [false, false, false, false]; return o; }
+    var pts = [], arc = [], base = [180, 270, 0, 90], sx = [-1, 1, 1, -1], sy = [-1, -1, 1, 1];
+    for (var i = 0; i < 4; i++) {
+      var r = p.rc[i];
+      if (!r || !(r[0] > 0.05 && r[1] > 0.05)) { pts.push(C[i]); arc.push(false); continue; }
+      var rx = Math.min(r[0], p.l), ry = Math.min(r[1], p.d), cx = C[i][0] - sx[i] * rx, cy = C[i][1] - sy[i] * ry, N = 12;
+      for (var k = 0; k <= N; k++) { var t = (base[i] + 90 * k / N) * Math.PI / 180; pts.push([cx + rx * Math.cos(t), cy + ry * Math.sin(t)]); arc.push(k < N); }
+    }
+    var out = [], sm = [];
+    for (var j = 0; j < pts.length; j++) {
+      var q = pts[j], prev = out[out.length - 1];
+      if (prev && Math.hypot(q[0] - prev[0], q[1] - prev[1]) < 1e-6) { sm[sm.length - 1] = sm[sm.length - 1] || arc[j]; continue; }
+      out.push(q); sm.push(arc[j]);
+    }
+    while (out.length > 3 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) < 1e-6) { out.pop(); sm.pop(); }
+    out.sm = sm; return out;
+  }
+  function pieceArea(p) { return hasRound(p) ? Math.abs(area(outline(p))) : p.l * p.d; }
   function faces(p) {
+    if (hasRound(p)) {
+      var ol = outline(p), cR = Math.cos(p.a * Math.PI / 180), sR = Math.sin(p.a * Math.PI / 180);
+      var W = ol.map(function (q) { return [p.x + cR * q[0] - sR * q[1], p.y + sR * q[0] + cR * q[1]]; });
+      var z0 = p.z, z1 = p.z + p.h, FF = [W.map(function (q) { return [q[0], q[1], z1]; }), W.slice().reverse().map(function (q) { return [q[0], q[1], z0]; })];
+      for (var m = 0; m < W.length; m++) {
+        var A = W[m], B = W[(m + 1) % W.length], sq = [[A[0], A[1], z0], [B[0], B[1], z0], [B[0], B[1], z1], [A[0], A[1], z1]];
+        if (ol.sm[m]) sq.smooth = true;
+        FF.push(sq);
+      }
+      return FF;
+    }
     var pr = profile(p);
     if (area(pr) < 0) pr = pr.reverse();
     var c = Math.cos(p.a * Math.PI / 180), s = Math.sin(p.a * Math.PI / 180), H = p.l / 2;
@@ -119,8 +152,8 @@ var Core = (function () {
     return F;
   }
   function foot(p) {
-    var c = Math.cos(p.a * Math.PI / 180), s = Math.sin(p.a * Math.PI / 180), L = p.l / 2, D = p.d / 2;
-    return [[-L, -D], [L, -D], [L, D], [-L, D]].map(function (q) { return [p.x + c * q[0] - s * q[1], p.y + s * q[0] + c * q[1]]; });
+    var c = Math.cos(p.a * Math.PI / 180), s = Math.sin(p.a * Math.PI / 180);
+    return outline(p).map(function (q) { return [p.x + c * q[0] - s * q[1], p.y + s * q[0] + c * q[1]]; });
   }
   function top(p) { return p.z + p.h; }
 
@@ -152,10 +185,10 @@ var Core = (function () {
     var feet = ps.map(foot), Y = yardPoly(site, prog);
     for (i = 0; i < ps.length; i++) {
       var p = ps[i];
-      if (areas[p.g] != null) areas[p.g] += p.l * p.d;
+      if (areas[p.g] != null) areas[p.g] += pieceArea(p);
       hmax = Math.max(hmax, top(p));
       var f = feet[i], ok = true;
-      for (j = 0; j < 4; j++) if (!inPoly(f[j], site.poly) || distToEdges(f[j], site.poly) < prog.setback - 1e-6) ok = false;
+      for (j = 0; j < f.length; j++) if (!inPoly(f[j], site.poly) || distToEdges(f[j], site.poly) < prog.setback - 1e-6) ok = false;
       for (j = 0; ok && j < site.poly.length; j++) if (inPoly(site.poly[j], f) && distToEdges(site.poly[j], f) > 1e-6) ok = false;
       if (!ok) { res.inside = false; res.bad[i] = 1; }
       if (Y && p.z < 4.5 && penetration(f, Y) > TOL) { res.yard = false; res.bad[i] = 1; }
@@ -787,7 +820,7 @@ var Core = (function () {
   }
 
   return {
-    FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top,
+    FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top, outline: outline, pieceArea: pieceArea, hasRound: hasRound,
     yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, linkTouching: linkTouching, touching: function (ps) { return connected(ps, ps.map(foot)); }, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();
