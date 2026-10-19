@@ -602,6 +602,7 @@ function refreshEdit() {
   }
   var has = selPiece >= 0 && !multi;
   $('#pieceTools').hidden = !has;
+  $('#splitTools').hidden = !(has || multi);
   if (has) {
     var p = a.pieces[selPiece];
     $$('#insp input[data-k]').forEach(function (inp) { if (document.activeElement !== inp) inp.value = +(+p[inp.dataset.k]).toFixed(2); });
@@ -745,6 +746,70 @@ $('#iArea').addEventListener('change', function () {
   refreshEdit(); save();
 });
 $('#eRoof').addEventListener('change', function () { var a = curAlt(); if (!a || selPiece < 0) return; pushUndo(a); a.pieces[selPiece].r = $('#eRoof').value; refreshEdit(); save(); });
+/* split the selected mass into n equal slabs (along its length, width or height).
+   pieces crossing a cut are cut; each slab becomes its own connected body. */
+function splitMass(ps, idx, dir, n) {
+  var r3 = function (v) { return Math.round(v * 1000) / 1000; };
+  var body = idx.filter(function (k) { return ps[k].g !== 'roof'; }); if (!body.length) body = idx.slice();
+  var ref = body.slice().sort(function (a, b) { return Core.pieceArea(ps[b]) - Core.pieceArea(ps[a]); })[0], R = ps[ref];
+  var ca = Math.cos(R.a * Math.PI / 180), sa = Math.sin(R.a * Math.PI / 180), e = dir === 'l' ? [ca, sa] : [-sa, ca];
+  var lo = Infinity, hi = -Infinity;
+  idx.forEach(function (k) {
+    var p = ps[k];
+    if (dir === 'h') { lo = Math.min(lo, p.z); hi = Math.max(hi, p.z + p.h); }
+    else Core.foot(p).forEach(function (q) { var u = q[0] * e[0] + q[1] * e[1]; lo = Math.min(lo, u); hi = Math.max(hi, u); });
+  });
+  var cuts = []; for (var k = 1; k < n; k++) cuts.push(lo + (hi - lo) * k / n);
+  var levels = []; idx.forEach(function (k) { var z = r3(ps[k].z); if (levels.indexOf(z) < 0) levels.push(z); }); levels.sort(function (x, y) { return x - y; });
+  function slabOf(u) { var s = 0; cuts.forEach(function (c) { if (u > c) s++; }); return s; }
+  var out = [];
+  idx.forEach(function (k) {
+    var p = ps[k], q, a0, a1, inner, t;
+    if (dir === 'h') { out.push({ p: p, s: levels.indexOf(r3(p.z)) }); return; }
+    var pc = p.x * e[0] + p.y * e[1], diff = ((p.a - R.a) % 90 + 90) % 90, aligned = diff < 0.5 || diff > 89.5;
+    if (!aligned || Core.hasRound(p)) { out.push({ p: p, s: slabOf(pc) }); return; }
+    var pa = Math.cos(p.a * Math.PI / 180), sb = Math.sin(p.a * Math.PI / 180);
+    var alongL = Math.abs(pa * e[0] + sb * e[1]) > 0.7, ext = alongL ? p.l : p.d;
+    var ax = alongL ? [pa, sb] : [-sb, pa], sign = (ax[0] * e[0] + ax[1] * e[1]) > 0 ? 1 : -1;
+    a0 = pc - ext / 2; a1 = pc + ext / 2;
+    inner = cuts.filter(function (c) { return c > a0 + 0.05 && c < a1 - 0.05; });
+    if (!inner.length) { out.push({ p: p, s: slabOf(pc) }); return; }
+    var us = [a0].concat(inner, [a1]);
+    for (t = 0; t < us.length - 1; t++) {
+      q = Object.assign({}, p);
+      var len = us[t + 1] - us[t], mid = (us[t] + us[t + 1]) / 2, off = (mid - pc) * sign;
+      if (alongL) q.l = r3(len); else q.d = r3(len);
+      q.x = r3(p.x + ax[0] * off); q.y = r3(p.y + ax[1] * off);
+      out.push({ p: q, s: slabOf(mid) });
+    }
+  });
+  var stamp = Date.now().toString(36), count = {};
+  out.forEach(function (o) { if (o.p.g !== 'roof') count[o.s] = (count[o.s] || 0) + 1; });
+  out.forEach(function (o) { delete o.p.u; if (o.p.g !== 'roof' && count[o.s] > 1) o.p.u = 'sp' + stamp + '_' + o.s; });
+  return out;
+}
+$$('[data-split]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var a = curAlt(); if (!a) return;
+    var idx = selSet.length ? selSet.slice() : (selPiece >= 0 ? [selPiece] : []);
+    if (!idx.length) return;
+    var dir = b.dataset.split, n = +$('#splitN').value || 2;
+    if (dir === 'h') {
+      var lv = {}; idx.forEach(function (k) { lv[Math.round(a.pieces[k].z * 1000)] = 1; });
+      if (Object.keys(lv).length < 2) { editMsg('한 층짜리 매스라 층으로 나눌 게 없어요. 위층을 만들려면 덩어리를 복제해서 띄움 값을 올려 보세요.', true); return; }
+    }
+    pushUndo(a);
+    var res = splitMass(a.pieces, idx, dir, n);
+    var keep = a.pieces.filter(function (_, k) { return idx.indexOf(k) < 0; }), start = keep.length;
+    res.sort(function (x, y) { return x.s - y.s; });
+    a.pieces = keep.concat(res.map(function (o) { return o.p; }));
+    var first = []; res.forEach(function (o, k) { if (o.s === res[0].s) first.push(start + k); });
+    var slabs = {}; res.forEach(function (o) { slabs[o.s] = 1; });
+    selSet = first; selPiece = first[first.length - 1];
+    editMsg(Object.keys(slabs).length + '조각으로 쪼갰어요. 조각을 눌러 옮기거나 높이를 바꿔 보세요. 다시 붙이려면 여러 개 고른 뒤 「맞닿은 면 합치기」.');
+    refreshEdit(); save();
+  });
+});
 function setCorner() {
   var a = curAlt(); if (!a || selPiece < 0) return;
   var p = a.pieces[selPiece], ci = +$('#eCorner').value, rx = Math.max(0, parseFloat($('#eRx').value) || 0), ry = Math.max(0, parseFloat($('#eRy').value) || 0);
