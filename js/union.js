@@ -64,6 +64,12 @@ var Union = (function () {
     if (f.length) { if (!this.front) this.front = new Node(); this.front.build(f); }
     if (b.length) { if (!this.back) this.back = new Node(); this.back.build(b); }
   };
+  function subtract(A, B) {
+    var a = new Node(A.map(function (p) { return p.clone(); })), b = new Node(B.map(function (p) { return p.clone(); }));
+    a.invert(); a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert();
+    a.build(b.all()); a.invert();
+    return a.all();
+  }
   function union(A, B) {
     var a = new Node(A.map(function (p) { return p.clone(); })), b = new Node(B.map(function (p) { return p.clone(); }));
     a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert();
@@ -105,28 +111,41 @@ var Union = (function () {
   function solids(pieces) {
     var key = JSON.stringify(pieces.map(function (p) { return [p.u || '', p.x, p.y, p.l, p.d, p.a, p.z, p.h, p.r, p.g, p.rc || 0]; }));
     if (cache.has(key)) return cache.get(key);
-    var out = [], groups = {};
-    pieces.forEach(function (p, i) { if (p.u && p.g !== 'roof') (groups[p.u] = groups[p.u] || []).push(i); });
+    var out = [], groups = {}, voids = [];
+    pieces.forEach(function (p, i) {
+      if (p.g === 'void') { voids.push(i); return; }
+      if (p.u && p.g !== 'roof') (groups[p.u] = groups[p.u] || []).push(i);
+    });
+    function hits(k, v) {
+      var p = pieces[k], q = pieces[v];
+      if (q.z >= p.z + p.h - 1e-4 || p.z >= q.z + q.h - 1e-4) return false;
+      return Core.penetration(Core.foot(p), Core.foot(q)) > 1e-4;
+    }
+    function polys(k, shared) { return Core.faces(pieces[k]).map(function (f) { return new Poly(f.map(function (q) { return q.slice(); }), shared || { pi: k, smooth: !!f.smooth }); }); }
     var done = {};
     pieces.forEach(function (p, i) {
+      if (p.g === 'void') return;
       var gi = p.u && groups[p.u] && groups[p.u].length > 1 ? groups[p.u] : null;
-      if (!gi) {
+      var members = gi || [i];
+      var cutters = p.g === 'roof' ? [] : voids.filter(function (v) { return members.some(function (k) { return hits(k, v); }); });
+      if (!gi && !cutters.length) {
         Core.faces(p).forEach(function (f) { out.push({ v: f, n: newell(f), edges: f.map(function () { return !f.smooth; }), pi: i, smooth: !!f.smooth }); });
         return;
       }
-      if (done[p.u]) return; done[p.u] = 1;
+      if (gi) { if (done[p.u]) return; done[p.u] = 1; }
       var acc = null;
-      gi.forEach(function (k) {
-        var ps = Core.faces(pieces[k]).map(function (f) { return new Poly(f.map(function (q) { return q.slice(); }), { pi: k, smooth: !!f.smooth }); });
-        acc = acc ? union(acc, ps) : ps;
+      members.forEach(function (k) { var ps = polys(k); acc = acc ? union(acc, ps) : ps; });
+      cutters.forEach(function (v) {
+        var vs = Core.faces(pieces[v]).map(function (f) { return new Poly(f.map(function (q) { return q.slice(); }), { pi: members[0], smooth: false }); });
+        acc = subtract(acc, vs);
       });
       var fe = featureEdges(acc);
-      acc.forEach(function (P, k) { out.push({ v: P.v, n: P.plane.n, edges: fe[k], pi: P.shared.pi, smooth: P.shared.smooth, group: p.u }); });
+      acc.forEach(function (P, k) { out.push({ v: P.v, n: P.plane.n, edges: fe[k], pi: P.shared.pi, smooth: P.shared.smooth, group: gi ? p.u : null }); });
     });
     if (cache.size > 400) cache.clear();
     cache.set(key, out);
     return out;
   }
-  return { solids: solids, union: union, newell: newell };
+  return { solids: solids, union: union, subtract: subtract, newell: newell };
 })();
 if (typeof module !== 'undefined') module.exports = Union;

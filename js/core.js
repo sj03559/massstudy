@@ -12,7 +12,8 @@ var Core = (function () {
     W: { ko: 'Work', en: 'Work', color: '#2C5C8F' },
     R: { ko: 'Rest', en: 'Rest', color: '#C0596E' },
     M: { ko: '매스', en: 'Mass', color: '#8EC3E3' },
-    roof: { ko: '지붕판', en: 'Roof', color: '#B9C2C7' }
+    roof: { ko: '지붕판', en: 'Roof', color: '#B9C2C7' },
+    void: { ko: '빼기', en: 'Difference', color: '#D9534F' }
   };
   var ROOFS = [
     { k: 'flat', ko: '평지붕' }, { k: 'gable', ko: '박공' }, { k: 'shed', ko: '외쪽' },
@@ -125,6 +126,31 @@ var Core = (function () {
     while (out.length > 3 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) < 1e-6) { out.pop(); sm.pop(); }
     out.sm = sm; return out;
   }
+  /* intersection of two convex polygons (Sutherland-Hodgman) */
+  function clipConvex(A, B) {
+    if (area(B) < 0) B = B.slice().reverse();
+    var out = A.slice();
+    for (var i = 0; i < B.length && out.length; i++) {
+      var a = B[i], b = B[(i + 1) % B.length], inp = out; out = [];
+      var side = function (q) { return (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]); };
+      for (var j = 0; j < inp.length; j++) {
+        var P = inp[j], Q = inp[(j + 1) % inp.length], sp = side(P), sq = side(Q);
+        if (sp >= 0) out.push(P);
+        if ((sp >= 0) !== (sq >= 0)) { var t = sp / (sp - sq); out.push([P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t]); }
+      }
+    }
+    return out;
+  }
+  /* floor area a void takes out of a piece: only where the void runs through the whole height of that piece */
+  function voidArea(p, voids) {
+    if (p.g === 'roof' || !voids.length) return 0;
+    var f = foot(p), s = 0;
+    voids.forEach(function (v) {
+      if (v.z > p.z + 0.05 || v.z + v.h < p.z + p.h - 0.05) return;
+      var I = clipConvex(f, foot(v)); if (I.length > 2) s += Math.abs(area(I));
+    });
+    return Math.min(s, pieceArea(p));
+  }
   function pieceArea(p) { return hasRound(p) ? Math.abs(area(outline(p))) : p.l * p.d; }
   function faces(p) {
     if (hasRound(p)) {
@@ -183,9 +209,11 @@ var Core = (function () {
     var ps = alt.pieces, areas = { S: 0, W: 0, R: 0, M: 0 }, hmax = 0, i, j, one = isOne(ps);
     var res = { inside: true, overlap: false, yard: true, height: true, areaOk: true, near: null, bad: {} };
     var feet = ps.map(foot), Y = yardPoly(site, prog);
+    var voids = ps.filter(function (q) { return q.g === 'void'; });
     for (i = 0; i < ps.length; i++) {
       var p = ps[i];
-      if (areas[p.g] != null) areas[p.g] += pieceArea(p);
+      if (p.g === 'void') continue;
+      if (areas[p.g] != null) areas[p.g] += pieceArea(p) - voidArea(p, voids);
       hmax = Math.max(hmax, top(p));
       var f = feet[i], ok = true;
       for (j = 0; j < f.length; j++) if (!inPoly(f[j], site.poly) || distToEdges(f[j], site.poly) < prog.setback - 1e-6) ok = false;
@@ -195,6 +223,7 @@ var Core = (function () {
       if (top(p) > prog.maxH + 1e-6) { res.height = false; res.bad[i] = 1; }
       for (j = 0; j < i; j++) {
         var q = ps[j];
+        if (q.g === 'void') continue;
         if (p.z < top(q) - TOL && q.z < top(p) - TOL && penetration(f, feet[j]) > TOL) { res.overlap = true; res.bad[i] = 1; res.bad[j] = 1; }
       }
     }
@@ -206,7 +235,7 @@ var Core = (function () {
     res.connected = one ? connected(ps, feet) : true;
     if (Y) {
       var d = Infinity;
-      for (i = 0; i < ps.length; i++) if (one ? ps[i].g !== 'roof' : ps[i].g === 'S') d = Math.min(d, polyDist(feet[i], Y));
+      for (i = 0; i < ps.length; i++) if (one ? ps[i].g !== 'roof' && ps[i].g !== 'void' : ps[i].g === 'S') d = Math.min(d, polyDist(feet[i], Y));
       res.near = d === Infinity ? null : d;
     }
     res.ok = res.inside && !res.overlap && res.yard && res.height && res.connected;
@@ -215,7 +244,7 @@ var Core = (function () {
 
   /* pieces (roof plates aside) form one body: each touches another, side by side or stacked */
   function connected(ps, feet) {
-    var idx = []; ps.forEach(function (p, i) { if (p.g !== 'roof') idx.push(i); });
+    var idx = []; ps.forEach(function (p, i) { if (p.g !== 'roof' && p.g !== 'void') idx.push(i); });
     if (idx.length < 2) return true;
     var seen = {}, stack = [idx[0]]; seen[idx[0]] = 1; var n = 1;
     while (stack.length) {
@@ -645,7 +674,7 @@ var Core = (function () {
 
   /* give every set of touching body pieces a shared union id so they draw as one mass */
   function linkTouching(ps, base) {
-    var body = []; ps.forEach(function (p, i) { if (p.g !== 'roof') body.push(i); });
+    var body = []; ps.forEach(function (p, i) { if (p.g !== 'roof' && p.g !== 'void') body.push(i); });
     var feet = ps.map(foot), comp = {}, n = 0;
     body.forEach(function (i) {
       if (comp[i] != null) return;
@@ -820,7 +849,7 @@ var Core = (function () {
   }
 
   return {
-    FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top, outline: outline, pieceArea: pieceArea, hasRound: hasRound,
+    FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top, outline: outline, pieceArea: pieceArea, hasRound: hasRound, voidArea: voidArea, penetration: penetration,
     yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, linkTouching: linkTouching, touching: function (ps) { return connected(ps, ps.map(foot)); }, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();

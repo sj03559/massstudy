@@ -484,6 +484,13 @@ function buildMasses() {
     var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
     g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: isSel ? selC : bad ? badC : new THREE.Color(Axon.EDGE) })));
   });
+  a.pieces.forEach(function (p, i) {
+    if (p.g !== 'void') return;
+    var geo = pieceGeom(p), isSel = i === selPiece || selSet.indexOf(i) >= 0;
+    var mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(GROUPS.void.color), transparent: true, opacity: isSel ? 0.32 : 0.18, depthWrite: false, side: THREE.DoubleSide });
+    var m = new THREE.Mesh(geo, mat); m.userData.idx = i; m.userData.group = null; g.add(m); three.meshes.push(m);
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: isSel ? selC : new THREE.Color(GROUPS.void.color) })));
+  });
 }
 function bindDrag() {
   var dom = three.renderer.domElement, ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(), hit = new THREE.Vector3(), st = null;
@@ -603,6 +610,9 @@ function refreshEdit() {
   var has = selPiece >= 0 && !multi;
   $('#pieceTools').hidden = !has;
   $('#splitTools').hidden = !(has || multi);
+  $('#voidTools').hidden = !(has || multi);
+  var isVoid = has && a.pieces[selPiece].g === 'void';
+  $('#toVoid').hidden = !has || isVoid; $('#fromVoid').hidden = !isVoid;
   if (has) {
     var p = a.pieces[selPiece];
     $$('#insp input[data-k]').forEach(function (inp) { if (document.activeElement !== inp) inp.value = +(+p[inp.dataset.k]).toFixed(2); });
@@ -620,7 +630,7 @@ function refreshEdit() {
 function fillSelects() {
   var f = $('#eFam'); FAMS.forEach(function (x) { var o = el('option', null, x.k + ' ' + x.ko); o.value = x.k; f.appendChild(o); });
   var r = $('#eRoof'); ROOFS.forEach(function (x) { var o = el('option', null, x.ko); o.value = x.k; r.appendChild(o); });
-  var g = $('#eGroup'); ['M', 'S', 'W', 'R', 'roof'].forEach(function (k) { var o = el('option', null, GROUPS[k].ko); o.value = k; g.appendChild(o); });
+  var g = $('#eGroup'); ['M', 'S', 'W', 'R', 'roof', 'void'].forEach(function (k) { var o = el('option', null, GROUPS[k].ko); o.value = k; g.appendChild(o); });
 }
 function setFam(a, fam) { if (a.fam === fam) return; a.num = nextNum(fam); a.fam = fam; save(); }
 $('#eFam').addEventListener('change', function () { var a = curAlt(); if (a) { setFam(a, $('#eFam').value); refreshEdit(); } });
@@ -806,9 +816,37 @@ $$('[data-split]').forEach(function (b) {
     var first = []; res.forEach(function (o, k) { if (o.s === res[0].s) first.push(start + k); });
     var slabs = {}; res.forEach(function (o) { slabs[o.s] = 1; });
     selSet = first; selPiece = first[first.length - 1];
-    editMsg(Object.keys(slabs).length + '조각으로 쪼갰어요. 조각을 눌러 옮기거나 높이를 바꿔 보세요. 다시 붙이려면 여러 개 고른 뒤 「맞닿은 면 합치기」.');
+    editMsg(Object.keys(slabs).length + '조각으로 쪼갰어요. 조각을 눌러 옮기거나 높이를 바꿔 보세요. 다시 붙이려면 여러 개 고른 뒤 「합치기」.');
     refreshEdit(); save();
   });
+});
+/* Boolean difference: void pieces carve the masses they overlap */
+$('#addVoid').addEventListener('click', function () {
+  var a = curAlt(); if (!a) return;
+  var idx = (selSet.length ? selSet : [selPiece]).filter(function (k) { return k >= 0 && a.pieces[k].g !== 'void' && a.pieces[k].g !== 'roof'; });
+  if (!idx.length) { editMsg('빼낼 매스를 먼저 골라 주세요.', true); return; }
+  var R = a.pieces[idx.slice().sort(function (x, y) { return Core.pieceArea(a.pieces[y]) - Core.pieceArea(a.pieces[x]); })[0]];
+  var ca = Math.cos(R.a * Math.PI / 180), sa = Math.sin(R.a * Math.PI / 180), u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  idx.forEach(function (k) {
+    var p = a.pieces[k]; z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z + p.h);
+    Core.foot(p).forEach(function (q) { var u = q[0] * ca + q[1] * sa, v = -q[0] * sa + q[1] * ca; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); });
+  });
+  var cu = (u0 + u1) / 2, cv = (v0 + v1) / 2, r3 = function (v) { return Math.round(v * 1000) / 1000; };
+  pushUndo(a);
+  a.pieces.push({ g: 'void', x: r3(cu * ca - cv * sa), y: r3(cu * sa + cv * ca), l: r3(Math.max(1, (u1 - u0) * 0.35)), d: r3(Math.max(1, (v1 - v0) * 0.35)), a: R.a, z: r3(z0 - 0.3), h: r3(z1 - z0 + 0.6), r: 'flat' });
+  selPiece = a.pieces.length - 1; selSet = [];
+  editMsg('가운데를 관통하는 빼는 덩어리를 넣었어요. 끌어서 옮기고 크기·높이를 바꿔 보세요.');
+  refreshEdit(); save();
+});
+$('#toVoid').addEventListener('click', function () {
+  var a = curAlt(); if (!a || selPiece < 0) return; var p = a.pieces[selPiece]; if (p.g === 'void') return;
+  pushUndo(a); p.g0 = p.g; p.g = 'void'; p.r = 'flat'; delete p.u; delete p.rc;
+  editMsg('이 덩어리가 겹치는 매스를 파내요.'); refreshEdit(); save();
+});
+$('#fromVoid').addEventListener('click', function () {
+  var a = curAlt(); if (!a || selPiece < 0) return; var p = a.pieces[selPiece]; if (p.g !== 'void') return;
+  pushUndo(a); p.g = p.g0 && p.g0 !== 'void' ? p.g0 : (S.mode === 'one' ? 'M' : 'W'); delete p.g0;
+  editMsg('빼기를 취소하고 다시 매스로 바꿨어요.'); refreshEdit(); save();
 });
 function setCorner() {
   var a = curAlt(); if (!a || selPiece < 0) return;
