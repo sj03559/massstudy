@@ -857,6 +857,13 @@ $('#exObj').addEventListener('click', function () {
   exMsg((g.length ? '고른 안 ' : '전체 ') + list.length + '개를 OBJ로 저장했어요. 압축을 풀고 라이노에서 Import 하세요.');
 });
 $('#exJson').addEventListener('click', function () { download(fname('project', 'json'), new Blob([JSON.stringify({ app: 'MassStudy', v: 2, name: META.name, data: S })], { type: 'application/json' })); exMsg('프로젝트 파일을 저장했어요.'); });
+function sameSite(A, B) {
+  if (A.origin && B.origin && Math.hypot(A.origin[0] - B.origin[0], A.origin[1] - B.origin[1]) > (A.upm || 1) * 1) return false;
+  var a1 = Math.abs(Core.area(A.poly)), a2 = Math.abs(Core.area(B.poly));
+  if (Math.abs(a1 - a2) > Math.max(a1, a2) * 0.02) return false;
+  var c1 = Core.bbox(A.poly), c2 = Core.bbox(B.poly);
+  return Math.abs(c1[0] - c2[0]) < 1 && Math.abs(c1[1] - c2[1]) < 1;
+}
 $('#imJson').addEventListener('change', function (e) {
   var f = e.target.files[0]; e.target.value = ''; if (!f) return;
   var fr = new FileReader();
@@ -864,8 +871,26 @@ $('#imJson').addEventListener('change', function (e) {
     try {
       var o = JSON.parse(fr.result), d = o.data || o;
       if (!d.site || !d.site.poly || !Array.isArray(d.alts)) throw 0;
-      openProject({ id: uid(), name: o.name || f.name.replace(/\.json$/i, ''), data: d }); save();
-      toast('새 프로젝트로 불러왔어요. 대안 ' + d.alts.length + '개.');
+      var nm = o.name || f.name.replace(/\.json$/i, '');
+      function asNew() {
+        openProject({ id: uid(), name: nm, data: d }); save();
+        toast('새 프로젝트로 불러왔어요. 대안 ' + d.alts.length + '개 · 이전 작업은 프로젝트 목록에 그대로 있어요.');
+      }
+      if (!S || !S.site || !d.alts.length || !sameSite(S.site, d.site)) { asNew(); return; }
+      ask('같은 대지예요. 「' + nm + '」의 대안 ' + d.alts.length + '개를 지금 프로젝트에 추가할까요?', '지금 프로젝트에 추가', '새 프로젝트로 열기').then(function (yes) {
+        if (!yes) { asNew(); return; }
+        var stamp = Date.now().toString(36), added = [];
+        d.alts.forEach(function (x) {
+          var n = JSON.parse(JSON.stringify(x)), old = x.id;
+          n.pieces.forEach(function (q) { if (q.u) q.u = q.u + '_i' + stamp; });
+          n.id = uid(); n.num = nextNum(n.fam); n.orig = JSON.stringify(n.pieces);
+          S.alts.push(n); added.push(n);
+          if ((d.picks || []).indexOf(old) >= 0 && S.picks.indexOf(n.id) < 0) S.picks.push(n.id);
+        });
+        S.cur = added[0].id; selPiece = -1; selSet = [];
+        setTab(S.tab || 'gen'); save();
+        toast('지금 프로젝트에 대안 ' + added.length + '개를 추가했어요.');
+      });
     } catch (err) { exMsg('이 파일은 MassStudy 프로젝트가 아니에요.', true); }
   };
   fr.readAsText(f);
@@ -880,9 +905,9 @@ $$('.dlg').forEach(function (d) {
   d.addEventListener('click', function (e) { if (e.target === d || e.target.hasAttribute('data-close')) { if (d.id !== 'dlgConfirm') closeDlg('#' + d.id); } });
 });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ['#dlgProjects', '#dlgLogin'].forEach(function (id) { if (!$(id).hidden) closeDlg(id); }); });
-function ask(text, yes) {
+function ask(text, yes, no) {
   return new Promise(function (res) {
-    $('#confirmText').textContent = text; $('#confirmYes').textContent = yes || '확인';
+    $('#confirmText').textContent = text; $('#confirmYes').textContent = yes || '확인'; $('#confirmNo').textContent = no || '취소';
     openDlg('#dlgConfirm'); $('#confirmNo').focus();
     function done(v) { closeDlg('#dlgConfirm'); $('#confirmYes').onclick = $('#confirmNo').onclick = null; res(v); }
     $('#confirmYes').onclick = function () { done(true); }; $('#confirmNo').onclick = function () { done(false); };
