@@ -59,6 +59,13 @@ function openProject(p) {
   S = Object.assign(freshData(false), p.data);
   if (!S.prog) S.prog = Object.assign({}, DEFAULT_PROG);
   if (!S.mode) S.mode = S.alts.length && !S.alts.some(function (x) { return Core.isOne(x.pieces); }) ? 'three' : 'one';
+  if (!S.linked) {
+    S.alts.forEach(function (x, k) {
+      if (!Core.isOne(x.pieces) || x.pieces.some(function (q) { return q.u; })) return;
+      if (Core.linkTouching(x.pieces, 'u' + k.toString(36) + 'm')) x.orig = JSON.stringify(x.pieces);
+    });
+    S.linked = 1;
+  }
   META = { id: p.id, name: p.name || '이름 없는 프로젝트', updated: p.updated || Date.now(), cloud: !!p.cloud };
   dxf = null; undoStack = {}; redoStack = {}; selPiece = -1; selSet = []; threeSiteDirty = true; view.fitted = false;
   $('#projName').value = META.name;
@@ -556,19 +563,31 @@ function refreshEdit() {
   row('겹침', ck.overlap ? '있음' : '없음', !ck.overlap);
   if (S.site.entry != null) { row('진입 마당', ck.yard ? '비어 있음' : '막힘', ck.yard); if (ck.one) row('마당까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', null); else row('창고까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', ck.near == null ? null : ck.near <= 3); }
   var pl = $('#pieces'); pl.innerHTML = '';
+  var shownU = {};
   a.pieces.forEach(function (p, i) {
-    var it = el('button', 'pc' + (i === selPiece || selSet.indexOf(i) >= 0 ? ' sel' : ''));
+    var members = p.u ? a.pieces.map(function (q, k) { return q.u === p.u ? k : -1; }).filter(function (k) { return k >= 0; }) : [i];
+    if (p.u && members.length > 1) { if (shownU[p.u]) return; shownU[p.u] = 1; }
+    var grouped = members.length > 1;
+    var on = members.some(function (k) { return k === selPiece || selSet.indexOf(k) >= 0; });
+    var it = el('button', 'pc' + (on ? ' sel' : ''));
     var sw = el('span', 'sw'); sw.style.background = GROUPS[p.g].color; it.appendChild(sw);
     var rk = ROOFS.filter(function (r) { return r.k === p.r; })[0];
-    it.appendChild(el('span', null, GROUPS[p.g].ko + (p.g === 'roof' ? '' : ' · ' + (rk ? rk.ko : '')) + (p.u ? ' · 합침' : '')));
-    it.appendChild(el('span', 'v', p.g === 'roof' ? fmt(p.l, 1) + '×' + fmt(p.d, 1) : fmt(p.l * p.d, 1) + '㎡ · H' + fmt(p.z + p.h, 1)));
+    if (grouped) {
+      var gA = 0, gH = 0; members.forEach(function (k) { var q = a.pieces[k]; gA += q.l * q.d; gH = Math.max(gH, q.z + q.h); });
+      it.appendChild(el('span', null, GROUPS[p.g].ko + ' · 이어진 덩어리 (' + members.length + '개 합침)'));
+      it.appendChild(el('span', 'v', fmt(gA, 1) + '㎡ · H' + fmt(gH, 1)));
+    } else {
+      it.appendChild(el('span', null, GROUPS[p.g].ko + (p.g === 'roof' ? '' : ' · ' + (rk ? rk.ko : ''))));
+      it.appendChild(el('span', 'v', p.g === 'roof' ? fmt(p.l, 1) + '×' + fmt(p.d, 1) : fmt(p.l * p.d, 1) + '㎡ · H' + fmt(p.z + p.h, 1)));
+    }
     it.addEventListener('click', function (ev) {
       if (ev.shiftKey || ev.ctrlKey || ev.metaKey) {
         if (selSet.length === 0 && selPiece >= 0) selSet = [selPiece];
-        var k1 = selSet.indexOf(i); if (k1 >= 0) selSet.splice(k1, 1); else selSet.push(i);
+        if (on) selSet = selSet.filter(function (k) { return members.indexOf(k) < 0; });
+        else members.forEach(function (k) { if (selSet.indexOf(k) < 0) selSet.push(k); });
         selPiece = selSet.length ? selSet[selSet.length - 1] : -1;
-      } else if (i === selPiece && selSet.length <= 1) { selPiece = -1; selSet = []; }
-      else { selPiece = i; selSet = p.u ? a.pieces.map(function (q, k) { return q.u === p.u ? k : -1; }).filter(function (k) { return k >= 0; }) : [i]; }
+      } else if (on && selSet.length <= members.length) { selPiece = -1; selSet = []; }
+      else { selPiece = members[members.length - 1]; selSet = members.slice(); }
       refreshEdit();
     });
     pl.appendChild(it);
@@ -609,6 +628,7 @@ function step(dir) {
 $('#prevAlt').addEventListener('click', function () { step(-1); });
 $('#nextAlt').addEventListener('click', function () { step(1); });
 function addAlt(base, pieces, name) {
+  if (S.mode === 'one' && !pieces.some(function (q) { return q.u; })) Core.linkTouching(pieces, 'u' + Date.now().toString(36));
   var n = { id: uid(), fam: base.fam, num: nextNum(base.fam), name: name, pieces: pieces, orig: JSON.stringify(pieces) };
   S.alts.push(n); return n;
 }

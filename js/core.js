@@ -603,10 +603,37 @@ var Core = (function () {
         var r = placeOne(f.k, site, prog, rnd, subs[f.k][i % subs[f.k].length], mode);
         if (!r) { fails++; continue; }
         var idx = (startIdx[f.k] || 0) + 1; startIdx[f.k] = idx;
+        if (mode === 'one') linkTouching(r.pieces, 'u' + seed.toString(36) + f.k + i);
         out.push({ id: f.k + '-' + seed.toString(36) + '-' + i, fam: f.k, num: idx, name: r.name, pieces: r.pieces, orig: JSON.stringify(r.pieces) });
       }
     });
     return { alts: out, fails: fails };
+  }
+
+  /* give every set of touching body pieces a shared union id so they draw as one mass */
+  function linkTouching(ps, base) {
+    var body = []; ps.forEach(function (p, i) { if (p.g !== 'roof') body.push(i); });
+    var feet = ps.map(foot), comp = {}, n = 0;
+    body.forEach(function (i) {
+      if (comp[i] != null) return;
+      var stack = [i]; comp[i] = n;
+      while (stack.length) {
+        var a = stack.pop();
+        body.forEach(function (j) {
+          if (comp[j] != null) return;
+          var p = ps[a], q = ps[j];
+          if (p.z > top(q) + 0.06 || q.z > top(p) + 0.06) return;
+          if (polyDist(feet[a], feet[j]) > 0.06) return;
+          if ((p.z >= top(q) - 0.06 || q.z >= top(p) - 0.06) && penetration(feet[a], feet[j]) < 0.5) return;
+          comp[j] = n; stack.push(j);
+        });
+      }
+      n++;
+    });
+    var size = {}; body.forEach(function (i) { size[comp[i]] = (size[comp[i]] || 0) + 1; });
+    var changed = false;
+    body.forEach(function (i) { if (size[comp[i]] > 1) { var id = base + '_' + comp[i]; if (ps[i].u !== id) { ps[i].u = id; changed = true; } } });
+    return changed;
   }
 
   /* ---- merge: replace several pieces with one box of the same total floor area ---- */
@@ -761,7 +788,7 @@ var Core = (function () {
 
   return {
     FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top,
-    yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, touching: function (ps) { return connected(ps, ps.map(foot)); }, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
+    yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, linkTouching: linkTouching, touching: function (ps) { return connected(ps, ps.map(foot)); }, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
