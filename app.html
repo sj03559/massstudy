@@ -139,7 +139,17 @@
       <div class="block">
         <h3>덩어리</h3>
         <div class="pieces" id="pieces"></div>
-        <p class="hint">3D에서 덩어리를 눌러 고르고 끌어서 옮겨요. 방향키 0.5m, Shift+방향키 회전.</p>
+        <p class="hint">3D에서 덩어리를 눌러 고르고 끌어서 옮겨요. <b>Shift+클릭</b>으로 여러 개 골라 합칠 수 있어요. 방향키 0.5m, Shift+방향키 회전.</p>
+        <div class="row"><button class="btn sm" id="selAll">전부 고르기</button></div>
+        <div id="multiTools" class="block" hidden>
+          <p class="msg" id="multiInfo"></p>
+          <div class="tools">
+            <button class="btn sm primary" id="mergeSel">하나로 합치기</button>
+            <button class="btn sm" id="snapSel">서로 붙이기</button>
+          </div>
+          <p class="hint">하나로 합치기는 고른 덩어리를 바닥면적 합계 그대로 한 덩어리로 만들어요. 서로 붙이기는 모양은 두고 마지막에 고른 덩어리 쪽으로 붙여요.</p>
+          <button class="btn sm ghost" id="clearSel">선택 해제</button>
+        </div>
         <div id="moveAllRow" class="block">
           <label class="check"><input type="checkbox" id="moveAll" checked> 끌 때 매스 전체 같이 움직이기</label>
           <div class="row"><button class="btn sm" id="rotAllL">전체 ↺ 15°</button><button class="btn sm" id="rotAllR">전체 ↻ 15°</button></div>

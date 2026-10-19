@@ -609,6 +609,51 @@ var Core = (function () {
     return { alts: out, fails: fails };
   }
 
+  /* ---- merge: replace several pieces with one box of the same total floor area ---- */
+  function mergePieces(ps) {
+    var body = ps.filter(function (p) { return p.g !== 'roof'; });
+    if (!body.length) body = ps;
+    var big = body.slice().sort(function (a, b) { return b.l * b.d - a.l * a.d; })[0];
+    var area = 0, zmin = Infinity, top_ = -Infinity, gA = {};
+    body.forEach(function (p) { var a = p.l * p.d; area += a; zmin = Math.min(zmin, p.z); top_ = Math.max(top_, p.z + p.h); gA[p.g] = (gA[p.g] || 0) + a; });
+    var g = Object.keys(gA).sort(function (a, b) { return gA[b] - gA[a]; })[0];
+    var ang = big.a * Math.PI / 180, c = Math.cos(ang), s = Math.sin(ang);
+    var u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    ps.forEach(function (p) { foot(p).forEach(function (q) { var u = q[0] * c + q[1] * s, v = -q[0] * s + q[1] * c; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }); });
+    var lu = Math.max(1, u1 - u0), lv = Math.max(1, v1 - v0), aspect = lu / lv;
+    var d = Math.sqrt(area / aspect), l = area / d;
+    var cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+    var h = big.r === 'flat' ? Math.max(2.5, top_ - zmin) : Math.max(big.h, Math.min(top_ - zmin, big.h * 1.4));
+    return round({ g: g, x: cu * c - cv * s, y: cu * s + cv * c, l: l, d: d, a: big.a, z: zmin, h: h, r: big.r });
+  }
+  /* ---- snap: slide pieces toward the first one until they touch ---- */
+  function snapTogether(ps) {
+    if (ps.length < 2) return ps;
+    var out = [Object.assign({}, ps[0])];
+    var ax = ps[0].x, ay = ps[0].y;
+    function clash(q) {
+      for (var i = 0; i < out.length; i++) { var o = out[i]; if (q.z < top(o) - TOL && o.z < top(q) - TOL && penetration(foot(q), foot(o)) > TOL) return true; }
+      return false;
+    }
+    function gap(q) {
+      var m = Infinity;
+      for (var i = 0; i < out.length; i++) { var o = out[i]; if (q.z < top(o) + 0.06 && o.z < top(q) + 0.06) m = Math.min(m, polyDist(foot(q), foot(o))); }
+      return m;
+    }
+    ps.slice(1).sort(function (a, b) { return Math.hypot(a.x - ax, a.y - ay) - Math.hypot(b.x - ax, b.y - ay); }).forEach(function (p) {
+      var q = Object.assign({}, p), dx = ax - p.x, dy = ay - p.y;
+      if (gap(q) <= 0.06 || clash(q)) { out.push(q); return; }
+      var lo = 0, hi = 1, best = 0;
+      for (var k = 0; k < 30; k++) {
+        var t = (lo + hi) / 2; q.x = p.x + dx * t; q.y = p.y + dy * t;
+        if (clash(q)) hi = t; else { best = t; lo = t; }
+      }
+      q.x = p.x + dx * best; q.y = p.y + dy * best;
+      out.push(round(q));
+    });
+    return out;
+  }
+
   /* ---- variations of an existing alternative ---- */
   function vary(alt, site, prog, seed, n) {
     var rnd = mulberry(seed), out = [], tries = 0;
@@ -716,7 +761,7 @@ var Core = (function () {
 
   return {
     FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top,
-    yardPoly: yardPoly, check: check, generate: generate, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
+    yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();
 if (typeof module !== 'undefined') module.exports = Core;

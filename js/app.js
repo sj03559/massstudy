@@ -29,7 +29,7 @@ function freshData(withSample) {
 }
 function summaryOf(d) { return { site: d.site ? d.site.name : '', area: d.site ? Math.round(Math.abs(Core.area(d.site.poly))) : 0, alts: d.alts.length, picks: d.picks.length }; }
 
-var S = null, META = null, dxf = null, undoStack = {}, redoStack = {}, selPiece = -1;
+var S = null, META = null, dxf = null, undoStack = {}, redoStack = {}, selPiece = -1, selSet = [];
 var saveT = 0, cloudT = 0, saveState = '';
 function setSaved(t) { saveState = t; $('#savedState').textContent = t; }
 function save() {
@@ -60,7 +60,7 @@ function openProject(p) {
   if (!S.prog) S.prog = Object.assign({}, DEFAULT_PROG);
   if (!S.mode) S.mode = S.alts.length && !S.alts.some(function (x) { return Core.isOne(x.pieces); }) ? 'three' : 'one';
   META = { id: p.id, name: p.name || '이름 없는 프로젝트', updated: p.updated || Date.now(), cloud: !!p.cloud };
-  dxf = null; undoStack = {}; redoStack = {}; selPiece = -1; threeSiteDirty = true; view.fitted = false;
+  dxf = null; undoStack = {}; redoStack = {}; selPiece = -1; selSet = []; threeSiteDirty = true; view.fitted = false;
   $('#projName').value = META.name;
   fillProg(); renderFamCounts(); renderSiteInfo(); renderMeta(); renderMode();
   setTab(S.tab || 'gen');
@@ -370,7 +370,7 @@ function renderCards() {
     var ck = check(a), good = ck.ok && ck.areaOk; if (good) nOk++;
     var card = el('div', 'card' + (isPicked(a) ? ' picked' : ''));
     var cv = el('canvas'); cv.title = '편집하기'; cv.setAttribute('role', 'button'); cv.tabIndex = 0; cv.setAttribute('aria-label', code(a) + ' 편집');
-    function go() { S.cur = a.id; selPiece = -1; setTab('edit'); save(); }
+    function go() { S.cur = a.id; selPiece = -1; selSet = []; setTab('edit'); save(); }
     cv.addEventListener('click', go); cv.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
     var cap = el('div', 'cap');
     var dot = el('span', 'dot' + (good ? '' : ' bad')); dot.title = good ? '조건 통과' : '조건 확인 필요';
@@ -457,9 +457,10 @@ function buildMasses() {
   a.pieces.forEach(function (p, i) {
     var geo = pieceGeom(p), col = S.colorMode ? GROUPS[p.g].color : Axon.FOAM;
     var mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(col), side: THREE.DoubleSide, transparent: p.g === 'roof', opacity: p.g === 'roof' ? 0.75 : 1 });
-    if (i === selPiece) mat.emissive = new THREE.Color(0x4a3000);
+    var isSel = i === selPiece || selSet.indexOf(i) >= 0;
+    if (isSel) mat.emissive = new THREE.Color(0x4a3000);
     var m = new THREE.Mesh(geo, mat); m.userData.idx = i; g.add(m); three.meshes.push(m);
-    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: i === selPiece ? selC : ck.bad[i] ? badC : new THREE.Color(Axon.EDGE) })));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color: isSel ? selC : ck.bad[i] ? badC : new THREE.Color(Axon.EDGE) })));
   });
 }
 function bindDrag() {
@@ -471,12 +472,21 @@ function bindDrag() {
     var hits = ray.intersectObjects(three.meshes, false);
     if (!hits.length) { st = { empty: true, x: e.clientX, y: e.clientY }; return; }
     var i = hits[0].object.userData.idx, a = curAlt(), p = a.pieces[i];
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      var k0 = selSet.indexOf(i);
+      if (selSet.length === 0 && selPiece >= 0) selSet = [selPiece];
+      k0 = selSet.indexOf(i);
+      if (k0 >= 0) selSet.splice(k0, 1); else selSet.push(i);
+      selPiece = selSet.length ? selSet[selSet.length - 1] : -1;
+      e.stopImmediatePropagation(); e.preventDefault(); refreshEdit(); return;
+    }
+    if (selSet.indexOf(i) < 0) selSet = [i];
     selPiece = i;
     plane.set(new THREE.Vector3(0, 1, 0), -p.z);
     if (!ray.ray.intersectPlane(plane, hit)) return;
     pushUndo(a);
-    var all = S.mode === 'one' && $('#moveAll').checked;
-    st = { i: i, sx: hit.x, sz: hit.z, px: p.x, py: p.y, moved: false, all: all, start: a.pieces.map(function (q) { return [q.x, q.y]; }) };
+    var group = selSet.length > 1 ? selSet.slice() : (S.mode === 'one' && $('#moveAll').checked ? a.pieces.map(function (_, k) { return k; }) : null);
+    st = { i: i, sx: hit.x, sz: hit.z, px: p.x, py: p.y, moved: false, all: !!group, start: a.pieces.map(function (q, k) { return !group || group.indexOf(k) >= 0 ? [q.x, q.y] : null; }) };
     three.controls.enabled = false; dom.setPointerCapture(e.pointerId);
     e.stopImmediatePropagation(); e.preventDefault();
     refreshEdit();
@@ -494,7 +504,7 @@ function bindDrag() {
   });
   function up(e) {
     if (!st) return;
-    if (st.empty) { if (Math.abs(e.clientX - st.x) + Math.abs(e.clientY - st.y) < 4) { selPiece = -1; refreshEdit(); } }
+    if (st.empty) { if (Math.abs(e.clientX - st.x) + Math.abs(e.clientY - st.y) < 4) { selPiece = -1; selSet = []; refreshEdit(); } }
     else { three.controls.enabled = true; if (!st.moved) undoStack[S.cur].pop(); else save(); }
     st = null;
   }
@@ -515,6 +525,7 @@ function openEdit() {
 function refreshEdit() {
   var a = curAlt(); if (!a) return;
   if (selPiece >= a.pieces.length) selPiece = -1;
+  selSet = selSet.filter(function (k) { return k < a.pieces.length; });
   $('#eCode').textContent = code(a); $('#eName').textContent = a.name;
   var pk = $('#ePick'); pk.setAttribute('aria-pressed', isPicked(a) ? 'true' : 'false'); pk.classList.toggle('on', isPicked(a)); pk.textContent = isPicked(a) ? '★ 고른 안' : '☆ 고르기';
   $('#eFam').value = a.fam;
@@ -531,15 +542,29 @@ function refreshEdit() {
   if (S.site.entry != null) { row('진입 마당', ck.yard ? '비어 있음' : '막힘', ck.yard); if (ck.one) row('마당까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', null); else row('창고까지', ck.near == null ? '—' : fmt(ck.near, 1) + 'm', ck.near == null ? null : ck.near <= 3); }
   var pl = $('#pieces'); pl.innerHTML = '';
   a.pieces.forEach(function (p, i) {
-    var it = el('button', 'pc' + (i === selPiece ? ' sel' : ''));
+    var it = el('button', 'pc' + (i === selPiece || selSet.indexOf(i) >= 0 ? ' sel' : ''));
     var sw = el('span', 'sw'); sw.style.background = GROUPS[p.g].color; it.appendChild(sw);
     var rk = ROOFS.filter(function (r) { return r.k === p.r; })[0];
     it.appendChild(el('span', null, GROUPS[p.g].ko + (p.g === 'roof' ? '' : ' · ' + (rk ? rk.ko : ''))));
     it.appendChild(el('span', 'v', p.g === 'roof' ? fmt(p.l, 1) + '×' + fmt(p.d, 1) : fmt(p.l * p.d, 1) + '㎡ · H' + fmt(p.z + p.h, 1)));
-    it.addEventListener('click', function () { selPiece = i === selPiece ? -1 : i; refreshEdit(); });
+    it.addEventListener('click', function (ev) {
+      if (ev.shiftKey || ev.ctrlKey || ev.metaKey) {
+        if (selSet.length === 0 && selPiece >= 0) selSet = [selPiece];
+        var k1 = selSet.indexOf(i); if (k1 >= 0) selSet.splice(k1, 1); else selSet.push(i);
+        selPiece = selSet.length ? selSet[selSet.length - 1] : -1;
+      } else if (i === selPiece && selSet.length <= 1) { selPiece = -1; selSet = []; }
+      else { selPiece = i; selSet = [i]; }
+      refreshEdit();
+    });
     pl.appendChild(it);
   });
-  var has = selPiece >= 0;
+  var multi = selSet.length > 1;
+  $('#multiTools').hidden = !multi;
+  if (multi) {
+    var tA = 0; selSet.forEach(function (k) { var q = a.pieces[k]; if (q.g !== 'roof') tA += q.l * q.d; });
+    $('#multiInfo').textContent = selSet.length + '개 골랐어요 · 바닥면적 합계 ' + fmt(tA, 1) + '㎡';
+  }
+  var has = selPiece >= 0 && !multi;
   $('#pieceTools').hidden = !has;
   if (has) {
     var p = a.pieces[selPiece];
@@ -562,7 +587,7 @@ $('#ePick').addEventListener('click', function () { var a = curAlt(); if (a) { t
 function step(dir) {
   var L = sortedAlts(); if (!L.length) return;
   var i = L.findIndex(function (a) { return a.id === S.cur; });
-  S.cur = L[(i + dir + L.length) % L.length].id; selPiece = -1; editMsg(''); refreshEdit(); save();
+  S.cur = L[(i + dir + L.length) % L.length].id; selPiece = -1; selSet = []; editMsg(''); refreshEdit(); save();
 }
 $('#prevAlt').addEventListener('click', function () { step(-1); });
 $('#nextAlt').addEventListener('click', function () { step(1); });
@@ -579,16 +604,38 @@ $('#varyBtn').addEventListener('click', function () {
   editMsg(made.map(code).join(', ') + '를 만들었어요. ▶로 넘겨 보세요.');
   save(); refreshEdit();
 });
-$('#dupAlt').addEventListener('click', function () { var a = curAlt(); if (!a) return; var n = addAlt(a, JSON.parse(JSON.stringify(a.pieces)), a.name); S.cur = n.id; selPiece = -1; editMsg(code(n) + '로 복제했어요.'); save(); refreshEdit(); });
+$('#dupAlt').addEventListener('click', function () { var a = curAlt(); if (!a) return; var n = addAlt(a, JSON.parse(JSON.stringify(a.pieces)), a.name); S.cur = n.id; selPiece = -1; selSet = []; editMsg(code(n) + '로 복제했어요.'); save(); refreshEdit(); });
 $('#delAlt').addEventListener('click', function () {
   var a = curAlt(); if (!a) return;
   ask(code(a) + ' 안을 지울까요? 되돌릴 수 없어요.', '지우기').then(function (ok) {
     if (!ok) return;
     var L = sortedAlts(), i = L.findIndex(function (x) { return x.id === a.id; });
     S.alts = S.alts.filter(function (x) { return x.id !== a.id; }); S.picks = S.picks.filter(function (x) { return x !== a.id; });
-    var nx = L[i + 1] || L[i - 1]; S.cur = nx && nx.id !== a.id ? nx.id : null; selPiece = -1; save(); openEdit();
+    var nx = L[i + 1] || L[i - 1]; S.cur = nx && nx.id !== a.id ? nx.id : null; selPiece = -1; selSet = []; save(); openEdit();
   });
 });
+$('#mergeSel').addEventListener('click', function () {
+  var a = curAlt(); if (!a || selSet.length < 2) return;
+  pushUndo(a);
+  var idx = selSet.slice().sort(function (x, y) { return x - y; });
+  var merged = Core.mergePieces(idx.map(function (k) { return a.pieces[k]; }));
+  a.pieces = a.pieces.filter(function (_, k) { return idx.indexOf(k) < 0; });
+  a.pieces.push(merged);
+  selPiece = a.pieces.length - 1; selSet = [selPiece];
+  editMsg(idx.length + '개를 한 덩어리로 합쳤어요. 바닥면적은 그대로예요. 마음에 안 들면 되돌리기를 눌러요.');
+  refreshEdit(); save();
+});
+$('#snapSel').addEventListener('click', function () {
+  var a = curAlt(); if (!a || selSet.length < 2) return;
+  pushUndo(a);
+  var order = [selPiece].concat(selSet.filter(function (k) { return k !== selPiece; }));
+  var snapped = Core.snapTogether(order.map(function (k) { return a.pieces[k]; }));
+  order.forEach(function (k, j) { a.pieces[k] = snapped[j]; });
+  editMsg('마지막으로 고른 덩어리 쪽으로 나머지를 붙였어요.');
+  refreshEdit(); save();
+});
+$('#clearSel').addEventListener('click', function () { selPiece = -1; selSet = []; refreshEdit(); });
+$('#selAll').addEventListener('click', function () { var a = curAlt(); if (!a) return; selSet = a.pieces.map(function (_, k) { return k; }); selPiece = selSet.length - 1; refreshEdit(); });
 function rotAll(deg) {
   var a = curAlt(); if (!a) return;
   pushUndo(a);
@@ -609,7 +656,7 @@ function act(kind) {
     case 'rot5-': p.a = (p.a - 5 + 360) % 360; break;
     case 'rot5+': p.a = (p.a + 5) % 360; break;
     case 'dup': a.pieces.push(Object.assign({}, p, { x: p.x + 2, y: p.y - 2 })); selPiece = a.pieces.length - 1; break;
-    case 'del': a.pieces.splice(selPiece, 1); selPiece = -1; break;
+    case 'del': a.pieces.splice(selPiece, 1); selPiece = -1; selSet = []; break;
     case 'left': case 'right': case 'up': case 'down':
       var mv = { left: [-0.5, 0], right: [0.5, 0], up: [0, 0.5], down: [0, -0.5] }[kind];
       (S.mode === 'one' && $('#moveAll').checked ? a.pieces : [p]).forEach(function (q) { q.x += mv[0]; q.y += mv[1]; });
@@ -645,18 +692,20 @@ $('#iArea').addEventListener('change', function () {
 });
 $('#eRoof').addEventListener('change', function () { var a = curAlt(); if (!a || selPiece < 0) return; pushUndo(a); a.pieces[selPiece].r = $('#eRoof').value; refreshEdit(); save(); });
 $('#eGroup').addEventListener('change', function () { var a = curAlt(); if (!a || selPiece < 0) return; pushUndo(a); a.pieces[selPiece].g = $('#eGroup').value; refreshEdit(); save(); });
-function undo() { var a = curAlt(), st = a && undoStack[a.id]; if (st && st.length) { (redoStack[a.id] = redoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; refreshEdit(); save(); } }
-function redo() { var a = curAlt(), st = a && redoStack[a.id]; if (st && st.length) { (undoStack[a.id] = undoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; refreshEdit(); save(); } }
+function undo() { var a = curAlt(), st = a && undoStack[a.id]; if (st && st.length) { (redoStack[a.id] = redoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; selSet = []; refreshEdit(); save(); } }
+function redo() { var a = curAlt(), st = a && redoStack[a.id]; if (st && st.length) { (undoStack[a.id] = undoStack[a.id] || []).push(JSON.stringify(a.pieces)); a.pieces = JSON.parse(st.pop()); selPiece = -1; selSet = []; refreshEdit(); save(); } }
 $('#undo').addEventListener('click', undo); $('#redo').addEventListener('click', redo);
-$('#resetAlt').addEventListener('click', function () { var a = curAlt(); if (!a || !a.orig) return; pushUndo(a); a.pieces = JSON.parse(a.orig); selPiece = -1; refreshEdit(); save(); });
+$('#resetAlt').addEventListener('click', function () { var a = curAlt(); if (!a || !a.orig) return; pushUndo(a); a.pieces = JSON.parse(a.orig); selPiece = -1; selSet = []; refreshEdit(); save(); });
 document.addEventListener('keydown', function (e) {
   if (!S || S.tab !== 'edit' || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || !$('#dlgConfirm').hidden) return;
   var k = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
-  if (k && selPiece < 0 && S.mode === 'one' && $('#moveAll').checked && !e.shiftKey) { e.preventDefault(); selPiece = 0; act(k); selPiece = -1; refreshEdit(); }
+  if (k && selPiece < 0 && S.mode === 'one' && $('#moveAll').checked && !e.shiftKey) { e.preventDefault(); selPiece = 0; act(k); selPiece = -1; selSet = []; refreshEdit(); }
   else if (k && selPiece >= 0) { e.preventDefault(); if (e.shiftKey) act(k === 'left' || k === 'down' ? 'rot5-' : 'rot5+'); else act(k); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && selSet.length > 1) { e.preventDefault(); var a0 = curAlt(); pushUndo(a0); a0.pieces = a0.pieces.filter(function (_, k) { return selSet.indexOf(k) < 0; }); selPiece = -1; selSet = []; refreshEdit(); save(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && selPiece >= 0) { e.preventDefault(); act('del'); }
-  else if (e.key === 'Escape') { selPiece = -1; refreshEdit(); }
+  else if (e.key === 'Escape') { selPiece = -1; selSet = []; refreshEdit(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); $('#selAll').click(); }
 });
 
 /* =====================================================================
@@ -683,7 +732,7 @@ function renderSheet() {
     var mini = el('div', 'mini');
     gr.items.forEach(function (it) {
       var card = el('div', 'card'), cv = el('canvas');
-      cv.addEventListener('click', function () { S.cur = it.a.id; selPiece = -1; setTab('edit'); });
+      cv.addEventListener('click', function () { S.cur = it.a.id; selPiece = -1; selSet = []; setTab('edit'); });
       var cap = el('div', 'cap');
       cap.appendChild(el('span', 'code', it.code));
       var sel = el('select'); sel.setAttribute('aria-label', it.code + ' 분류 바꾸기');
