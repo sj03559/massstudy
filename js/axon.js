@@ -25,15 +25,13 @@ var Axon = (function () {
   /* visible faces, sorted back to front; each {pts:[[x,y]...], rgb:[r,g,b], fill:'#hex'} */
   function faces(pieces, colorOf) {
     var out = [];
-    pieces.forEach(function (p) {
-      var col = colorOf ? colorOf(p) : FOAM;
-      Core.faces(p).forEach(function (f) {
-        var n = newell(f);
-        if (n[0] * D[0] + n[1] * D[1] + n[2] * D[2] <= 1e-6) return;
-        var d = 0; f.forEach(function (q) { d += depth(q); });
-        var rgb = shadeRgb(col, n);
-        out.push({ d: d / f.length, pts: f.map(proj), rgb: rgb, fill: toHex(rgb), roof: p.g === 'roof', smooth: !!f.smooth });
-      });
+    Union.solids(pieces).forEach(function (f) {
+      var n = f.n, p = pieces[f.pi];
+      if (n[0] * D[0] + n[1] * D[1] + n[2] * D[2] <= 1e-6) return;
+      var d = 0; f.v.forEach(function (q) { d += depth(q); });
+      var rgb = shadeRgb(colorOf ? colorOf(p) : FOAM, n);
+      var all = f.edges.every(Boolean);
+      out.push({ d: d / f.v.length, pts: f.v.map(proj), rgb: rgb, fill: toHex(rgb), roof: p.g === 'roof', smooth: !!f.smooth, edges: f.edges, all: all });
     });
     out.sort(function (a, b) { return a.d - b.d; });
     return out;
@@ -73,7 +71,14 @@ var Axon = (function () {
     (opts.faces || faces(pieces, opts.colorOf)).forEach(function (f) {
       path(f.pts);
       c.globalAlpha = f.roof ? 0.8 : 1;
-      c.fillStyle = f.fill; c.fill(); c.strokeStyle = f.smooth ? f.fill : (opts.edge || EDGE); c.lineWidth = opts.lineWidth || 0.6; c.stroke();
+      c.fillStyle = f.fill; c.fill(); c.lineWidth = opts.lineWidth || 0.6;
+      if (f.all) { c.strokeStyle = opts.edge || EDGE; c.stroke(); }
+      else {
+        c.strokeStyle = f.fill; c.stroke();
+        c.strokeStyle = opts.edge || EDGE; c.beginPath();
+        f.pts.forEach(function (q, i) { if (!f.edges[i]) return; var a = P(q), b = P(f.pts[(i + 1) % f.pts.length]); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); });
+        c.stroke();
+      }
       c.globalAlpha = 1;
     });
     return { s: s, ox: ox, oy: oy };

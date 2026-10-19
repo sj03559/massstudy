@@ -761,7 +761,7 @@ var Core = (function () {
 
   return {
     FAMS: FAMS, GROUPS: GROUPS, ROOFS: ROOFS, area: area, ccw: ccw, inPoly: inPoly, distSeg: distSeg, faces: faces, foot: foot, top: top,
-    yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
+    yardPoly: yardPoly, check: check, generate: generate, mergePieces: mergePieces, snapTogether: snapTogether, touching: function (ps) { return connected(ps, ps.map(foot)); }, vary: vary, SUBS: SUBS, SUBS1: SUBS1, isOne: isOne, parseDXF: parseDXF, unitsPerMeter: unitsPerMeter, bbox: bbox, mulberry: mulberry
   };
 })();
 if (typeof module !== 'undefined') module.exports = Core;

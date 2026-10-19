@@ -26,7 +26,7 @@ var Export = (function () {
         var cx = x0 + cw / 2 - (b[0] + b[2]) / 2 * sc, cy = y0 + 40 + (rh - 46) / 2 + (b[1] + b[3]) / 2 * sc;
         out.codes.push({ x: x0 + 10, y: y0 + 30, t: it.code, size: 15, id: it.code });
         it.F.forEach(function (f) {
-          out.polys.push({ id: it.code, pts: f.pts.map(function (q) { return [cx + q[0] * sc, cy - q[1] * sc]; }), rgb: f.rgb, fill: f.fill, smooth: f.smooth });
+          out.polys.push({ id: it.code, pts: f.pts.map(function (q) { return [cx + q[0] * sc, cy - q[1] * sc]; }), rgb: f.rgb, fill: f.fill, smooth: f.smooth, edges: f.edges, all: f.all });
         });
       });
     });
@@ -46,7 +46,14 @@ var Export = (function () {
     L.codes.forEach(function (c) {
       o.push('<g id="' + c.id + '">');
       o.push('<text x="' + c.x.toFixed(2) + '" y="' + c.y.toFixed(2) + '" ' + TF + ' font-size="' + c.size + '" fill="#1A2228">' + esc(c.t) + '</text>');
-      L.polys.forEach(function (p) { if (p.id === c.id) o.push('<polygon points="' + p.pts.map(function (q) { return q[0].toFixed(2) + ',' + q[1].toFixed(2); }).join(' ') + '" fill="' + p.fill + '" stroke="' + (p.smooth ? p.fill : '#3E6E8E') + '" stroke-width="0.4" stroke-linejoin="round"/>'); });
+      L.polys.forEach(function (p) {
+        if (p.id !== c.id) return;
+        var pts = p.pts.map(function (q) { return q[0].toFixed(2) + ',' + q[1].toFixed(2); });
+        if (p.all) { o.push('<polygon points="' + pts.join(' ') + '" fill="' + p.fill + '" stroke="#3E6E8E" stroke-width="0.4" stroke-linejoin="round"/>'); return; }
+        o.push('<polygon points="' + pts.join(' ') + '" fill="' + p.fill + '" stroke="' + p.fill + '" stroke-width="0.4" stroke-linejoin="round"/>');
+        var d = ''; p.pts.forEach(function (q, i) { if (!p.edges[i]) return; var b = p.pts[(i + 1) % p.pts.length]; d += 'M' + q[0].toFixed(2) + ' ' + q[1].toFixed(2) + 'L' + b[0].toFixed(2) + ' ' + b[1].toFixed(2); });
+        if (d) o.push('<path d="' + d + '" fill="none" stroke="#3E6E8E" stroke-width="0.4" stroke-linecap="round"/>');
+      });
       o.push('</g>');
     });
     o.push('</svg>');
@@ -69,9 +76,14 @@ var Export = (function () {
     L.rules.forEach(function (r) { c.push(n(r[0]) + ' ' + n(H - r[1]) + ' m ' + n(r[2]) + ' ' + n(H - r[3]) + ' l S'); });
     c.push('1 j 0.4 w ' + col(EDGE, 'RG'));
     L.polys.forEach(function (p) {
-      var s = col(p.rgb, 'rg') + ' ' + (p.smooth ? col(p.rgb, 'RG') : col(EDGE, 'RG')) + ' ';
+      var s = col(p.rgb, 'rg') + ' ' + (p.all ? col(EDGE, 'RG') : col(p.rgb, 'RG')) + ' ';
       p.pts.forEach(function (q, i) { s += n(q[0]) + ' ' + n(H - q[1]) + (i ? ' l ' : ' m '); });
       c.push(s + 'h B');
+      if (!p.all) {
+        var e2 = col(EDGE, 'RG') + ' ';
+        p.pts.forEach(function (q, i) { if (!p.edges[i]) return; var b = p.pts[(i + 1) % p.pts.length]; e2 += n(q[0]) + ' ' + n(H - q[1]) + ' m ' + n(b[0]) + ' ' + n(H - b[1]) + ' l '; });
+        c.push(e2 + 'S');
+      }
     });
     c.push(col(INK, 'rg'));
     L.titles.concat(L.codes).forEach(function (t) { c.push('BT /F1 ' + t.size + ' Tf ' + n(t.x) + ' ' + n(H - t.y) + ' Td <' + textHex(t.t) + '> Tj ET'); });
@@ -116,7 +128,8 @@ var Export = (function () {
     c.strokeStyle = '#C9D0D3'; c.lineWidth = 0.8;
     L.rules.forEach(function (r) { c.beginPath(); c.moveTo(r[0], r[1]); c.lineTo(r[2], r[3]); c.stroke(); });
     c.lineJoin = 'round'; c.lineWidth = 0.4; c.strokeStyle = '#3E6E8E';
-    L.polys.forEach(function (p) { c.beginPath(); p.pts.forEach(function (q, i) { if (i) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); }); c.closePath(); c.fillStyle = p.fill; c.fill(); c.strokeStyle = p.smooth ? p.fill : '#3E6E8E'; c.stroke(); });
+    L.polys.forEach(function (p) { c.beginPath(); p.pts.forEach(function (q, i) { if (i) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); }); c.closePath(); c.fillStyle = p.fill; c.fill(); c.strokeStyle = p.all ? '#3E6E8E' : p.fill; c.stroke();
+      if (!p.all) { c.strokeStyle = '#3E6E8E'; c.beginPath(); p.pts.forEach(function (q, i) { if (!p.edges[i]) return; var b = p.pts[(i + 1) % p.pts.length]; c.moveTo(q[0], q[1]); c.lineTo(b[0], b[1]); }); c.stroke(); } });
     c.fillStyle = '#1A2228';
     L.titles.concat(L.codes).forEach(function (t) { c.font = t.size + 'px "Noto Sans KR", sans-serif'; c.fillText(t.t, t.x, t.y); });
     return new Promise(function (res) { cv.toBlob(function (b) { res(b); }, 'image/png'); });
@@ -153,10 +166,16 @@ var Export = (function () {
     function V(x, y, z) { L.push('v ' + (o[0] + x * u).toFixed(2) + ' ' + (o[1] + y * u).toFixed(2) + ' ' + (z * u).toFixed(2)); return ++vi; }
     list.forEach(function (it, i) {
       var dx = (i % 5) * sx, dy = -Math.floor(i / 5) * sy;
-      it.a.pieces.forEach(function (p, k) {
-        L.push('g ' + it.code + '_' + GN[p.g] + '_' + (k + 1));
-        Core.faces(p).forEach(function (f) {
-          triangulate(f, Axon.newell(f)).forEach(function (t) { L.push('f ' + t.map(function (q) { return V(q[0] + dx, q[1] + dy, q[2]); }).join(' ')); });
+      var byKey = {}, order = [];
+      Union.solids(it.a.pieces).forEach(function (f) {
+        var p = it.a.pieces[f.pi], key = f.group ? 'U' + f.group : 'P' + f.pi;
+        if (!byKey[key]) { byKey[key] = { name: it.code + '_' + GN[p.g] + '_' + (f.group ? 'merged' + (order.length + 1) : (f.pi + 1)), faces: [] }; order.push(key); }
+        byKey[key].faces.push(f);
+      });
+      order.forEach(function (key) {
+        L.push('g ' + byKey[key].name);
+        byKey[key].faces.forEach(function (f) {
+          triangulate(f.v, f.n).forEach(function (t) { L.push('f ' + t.map(function (q) { return V(q[0] + dx, q[1] + dy, q[2]); }).join(' ')); });
         });
       });
       L.push('g ' + it.code + '_Site');
